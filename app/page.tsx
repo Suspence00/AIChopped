@@ -9,6 +9,7 @@ import { getIngredients, getRandomBasket, RoundType } from '@/lib/ingredients';
 import { RefreshCw, Trophy, UtensilsCrossed, ArrowRight, ChefHat, Dices, Lock, UserPlus, ShieldCheck, AlertCircle } from 'lucide-react';
 
 import { DEFAULT_MODELS, FORCED_IMAGE_MODELS, DEFAULT_IMAGE_MODELS, AVAILABLE_IMAGE_MODELS } from '@/lib/models';
+import { demoChefs, demoBaskets, demoDishes, demoIntroStatus } from '@/lib/demoData';
 
 // --- Configuration ---
 // Models are now dynamic, but we keep the initial structure.
@@ -43,10 +44,17 @@ export default function ChoppedGame() {
   const [creditsState, setCreditsState] = useState<{ status: 'checking' | 'valid' | 'invalid' | 'missing'; balance?: number; error?: string }>({ status: 'checking' });
   const [currentChefIndex, setCurrentChefIndex] = useState(0);
   const [hasChoppedThisRound, setHasChoppedThisRound] = useState(false);
+  const [demoMode, setDemoMode] = useState(false);
 
   const isCreditLocked = creditsState.status !== 'valid';
+  const gameplayLocked = !demoMode && isCreditLocked;
+  const demoEliminationOrder = ['google', 'xai', 'anthropic']; // Winner stays last (openai)
 
   const validateCredits = async (forcedKey?: string) => {
+    if (demoMode) {
+      setCreditsState({ status: 'valid', balance: Infinity });
+      return;
+    }
     const key = forcedKey || localStorage.getItem('AI_GATEWAY_API_KEY') || '';
     if (!key) {
       setCreditsState({ status: 'missing', error: 'Add your AI Gateway key in Settings.' });
@@ -133,6 +141,27 @@ export default function ChoppedGame() {
   });
 
   const [loadingStates, setLoadingStates] = useState<Record<string, 'idle' | 'text' | 'image' | 'done' | 'error'>>({});
+
+  const enterDemoMode = () => {
+    setDemoMode(true);
+    setCreditsState({ status: 'valid', balance: Infinity });
+    setChefs(demoChefs);
+    setBasket(demoBaskets[0]);
+    setHasGeneratedChefs(true);
+    setChefIntrosReady(true);
+    setChefIntroStatus(demoIntroStatus);
+    setCurrentChefIndex(0);
+    setHasChoppedThisRound(false);
+    setDishHistory({ openai: [], anthropic: [], google: [], xai: [] });
+    setGameState({
+      roundNumber: 0,
+      status: 'idle',
+      ingredients: [],
+      dishes: { openai: undefined, anthropic: undefined, google: undefined, xai: undefined },
+      eliminated: [],
+      contestants: demoChefs.map(c => c.id)
+    });
+  };
 
 
   const getChefConfig = (id: string) => {
@@ -272,8 +301,19 @@ export default function ChoppedGame() {
   };
 
   const generateChefs = async () => {
-    if (isCreditLocked) {
+    if (gameplayLocked) {
       alert('Validate your API key and balance in Settings first.');
+      return;
+    }
+
+    if (demoMode) {
+      setGeneratingChefs(true);
+      setChefs(demoChefs);
+      setChefIntroStatus(demoIntroStatus);
+      setChefIntrosReady(true);
+      setHasGeneratedChefs(true);
+      setBasket(demoBaskets[0]);
+      setTimeout(() => setGeneratingChefs(false), 200);
       return;
     }
 
@@ -320,7 +360,7 @@ export default function ChoppedGame() {
   };
 
   const startRound = async () => {
-    if (isCreditLocked) {
+    if (gameplayLocked) {
       alert("Validate your API key and balance before starting.");
       return;
     }
@@ -331,7 +371,13 @@ export default function ChoppedGame() {
     }
 
     // Validate inputs
-    const filledIngredients = basket.filter(i => i.trim());
+    const roundIndex = gameState.roundNumber; // 0-based for next round
+    const filledIngredients = (() => {
+      if (demoMode) {
+        return demoBaskets[roundIndex] || demoBaskets[demoBaskets.length - 1] || basket.filter(i => i.trim());
+      }
+      return basket.filter(i => i.trim());
+    })();
     if (filledIngredients.length !== 4) {
       alert("Please select 4 ingredients!");
       return;
@@ -359,9 +405,10 @@ export default function ChoppedGame() {
     setLoadingStates(initialLoad);
 
     // Parallel Execution
+    const runner = demoMode ? processChefTurnDemo : processChefTurn;
     activeChefsIds.forEach(id => {
       const chefConfig = getChefConfig(id);
-      processChefTurn(chefConfig, filledIngredients, nextRound);
+      runner(chefConfig, filledIngredients, nextRound);
     });
   };
 
@@ -372,7 +419,12 @@ export default function ChoppedGame() {
   };
 
   const randomizeBasket = () => {
-    if (isCreditLocked || !hasGeneratedChefs) return;
+    if (gameplayLocked || !hasGeneratedChefs) return;
+    if (demoMode) {
+      const rIndex = gameState.roundNumber % demoBaskets.length;
+      setBasket(demoBaskets[rIndex]);
+      return;
+    }
 
     // Determine round type - default to Appetizer if round 0, else follow sequence
     const rNum = gameState.roundNumber + 1;
@@ -478,6 +530,57 @@ export default function ChoppedGame() {
     }
   };
 
+  const processChefTurnDemo = async (chef: Chef, ingredients: string[], roundNum: number) => {
+    const dishes = demoDishes[chef.id as ChefProvider] || [];
+    const match = dishes.find(d => d.roundNumber === roundNum) || dishes[0];
+    const textData = match || {
+      roundNumber: roundNum,
+      chefId: chef.id as ChefProvider,
+      title: 'Demo Dish',
+      description: 'Sample description.',
+      ingredientsUsed: ingredients,
+      imageUrl: undefined
+    };
+
+    const baseDish: Dish = {
+      roundNumber: roundNum,
+      chefId: chef.id as ChefProvider,
+      title: textData.title,
+      description: formatMonologueText(textData.description),
+      ingredientsUsed: ingredients,
+      imageUrl: undefined
+    };
+
+    // Simulate async steps
+    setTimeout(() => {
+      setGameState(prev => ({
+        ...prev,
+        dishes: {
+          ...prev.dishes,
+          [chef.id]: baseDish
+        }
+      }));
+      setLoadingStates(prev => ({ ...prev, [chef.id]: 'image' }));
+
+      const finalDish: Dish = { ...baseDish, imageUrl: textData.imageUrl };
+      setTimeout(() => {
+        setGameState(prev => ({
+          ...prev,
+          dishes: {
+            ...prev.dishes,
+            [chef.id]: finalDish
+          }
+        }));
+        setLoadingStates(prev => ({ ...prev, [chef.id]: 'done' }));
+        setDishHistory(prev => {
+          const existing = prev[chef.id] || [];
+          const filtered = existing.filter(d => d.roundNumber !== roundNum);
+          return { ...prev, [chef.id]: [...filtered, finalDish] };
+        });
+      }, 200);
+    }, 200);
+  };
+
   const moveToRoundOne = () => {
     if (!chefIntrosReady) return;
     setHasGeneratedChefs(true);
@@ -506,6 +609,14 @@ export default function ChoppedGame() {
 
 
   const eliminateChef = (chefId: string) => {
+    if (demoMode) {
+      const expected = demoEliminationOrder[gameState.eliminated.length];
+      if (expected && chefId !== expected) {
+        alert(`Demo mode follows a fixed storyline. Please chop ${getChefConfig(expected).name} next.`);
+        return;
+      }
+    }
+
     if (hasChoppedThisRound) {
       alert("You've already chopped a chef this round. Start the next round to chop again.");
       return;
@@ -555,6 +666,17 @@ export default function ChoppedGame() {
       setCurrentChefIndex(Math.max(0, activeChefs.length - 1));
     }
   }, [activeChefs.length, currentChefIndex]);
+
+  useEffect(() => {
+    if (!demoMode) return;
+    if (gameState.status === 'idle') {
+      const filled = basket.filter(b => b.trim()).length;
+      if (filled !== 4) {
+        const next = demoBaskets[gameState.roundNumber] || demoBaskets[demoBaskets.length - 1] || basket;
+        setBasket(next);
+      }
+    }
+  }, [demoMode, gameState.status, gameState.roundNumber]);
 
   // --- Renders ---
 
@@ -660,11 +782,29 @@ export default function ChoppedGame() {
             </h1>
             <span className="text-xs px-2 py-0.5 border border-gray-700 rounded-full text-gray-500">Gateway Edition</span>
           </div>
-          <SettingsModal />
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => demoMode ? window.location.reload() : enterDemoMode()}
+              className={`px-3 py-2 rounded-lg text-sm font-semibold border transition-colors ${demoMode ? 'bg-emerald-700/60 border-emerald-400 text-white' : 'bg-gray-900 border-gray-700 text-amber-400 hover:border-amber-500'}`}
+            >
+              {demoMode ? 'Exit Example Game' : 'Example Game'}
+            </button>
+            <SettingsModal />
+          </div>
         </div>
       </header>
 
       <main className="container mx-auto px-4 py-8 max-w-7xl">
+        {demoMode && (
+          <div className="mb-4 p-4 border border-emerald-500/40 rounded-xl bg-emerald-900/30 text-emerald-100 flex items-center justify-between">
+            <div>
+              <p className="font-semibold">Example Game Mode</p>
+              <p className="text-sm text-emerald-200/80">Token-free demo using pre-generated chefs and dishes. All actions stay local.</p>
+            </div>
+            <span className="text-xs uppercase font-bold bg-emerald-600/60 px-3 py-1 rounded-full border border-emerald-400">No Credits Needed</span>
+          </div>
+        )}
+
         {creditsState.status !== 'valid' && (
           <div className="mb-6 p-4 border border-gray-800 rounded-xl bg-gray-900/50 flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
             <div className="flex items-start gap-3">
@@ -703,7 +843,7 @@ export default function ChoppedGame() {
           </div>
         )}
 
-        <div className={`${isCreditLocked ? 'opacity-50 pointer-events-none select-none' : ''}`}>
+        <div className={`${gameplayLocked ? 'opacity-50 pointer-events-none select-none' : ''}`}>
 
         {/* Round Controls */}
         <section className="mb-12 text-center space-y-6">
