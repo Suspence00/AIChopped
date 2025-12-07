@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Settings, Lock, CheckCircle, AlertCircle, RefreshCw, Wallet } from 'lucide-react';
-import { AVAILABLE_MODELS, DEFAULT_MODELS, AVAILABLE_IMAGE_MODELS, FORCED_IMAGE_MODELS } from '@/lib/models';
+import { AVAILABLE_MODELS, DEFAULT_MODELS, AVAILABLE_IMAGE_MODELS, DEFAULT_IMAGE_MODELS } from '@/lib/models';
 
 function Input({ value, onChange, placeholder, type = "text", className = "" }: any) {
     return (
@@ -54,7 +54,7 @@ function Button({ onClick, children, className, disabled }: any) {
 }
 
 // Modal content component
-function ModalContent({ onClose, keyValue, setKey, models, handleModelChange, saveSettings, checkCredits, checkingCredits, creditInfo, showDetails, setShowDetails, usePersonas, setUsePersonas }: any) {
+function ModalContent({ onClose, keyValue, setKey, models, handleModelChange, imageModels, handleImageModelChange, saveSettings, checkCredits, checkingCredits, creditInfo, showDetails, setShowDetails, usePersonas, setUsePersonas }: any) {
     return (
         <div
             className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-md"
@@ -136,10 +136,9 @@ function ModalContent({ onClose, keyValue, setKey, models, handleModelChange, sa
                                 />
                                 <div className="mt-1"></div>
                                 <Select
-                                    value={FORCED_IMAGE_MODELS.openai}
-                                    onChange={() => { }}
+                                    value={imageModels.openai}
+                                    onChange={(e: any) => handleImageModelChange('openai', e.target.value)}
                                     options={AVAILABLE_IMAGE_MODELS.openai}
-                                    disabled
                                 />
                             </div>
                             <div>
@@ -151,10 +150,9 @@ function ModalContent({ onClose, keyValue, setKey, models, handleModelChange, sa
                                 />
                                 <div className="mt-1"></div>
                                 <Select
-                                    value={FORCED_IMAGE_MODELS.anthropic}
-                                    onChange={() => { }}
+                                    value={imageModels.anthropic}
+                                    onChange={(e: any) => handleImageModelChange('anthropic', e.target.value)}
                                     options={AVAILABLE_IMAGE_MODELS.anthropic}
-                                    disabled
                                 />
                             </div>
                             <div>
@@ -166,10 +164,9 @@ function ModalContent({ onClose, keyValue, setKey, models, handleModelChange, sa
                                 />
                                 <div className="mt-1"></div>
                                 <Select
-                                    value={FORCED_IMAGE_MODELS.google}
-                                    onChange={() => { }}
+                                    value={imageModels.google}
+                                    onChange={(e: any) => handleImageModelChange('google', e.target.value)}
                                     options={AVAILABLE_IMAGE_MODELS.google}
-                                    disabled
                                 />
                             </div>
                             <div>
@@ -181,10 +178,9 @@ function ModalContent({ onClose, keyValue, setKey, models, handleModelChange, sa
                                 />
                                 <div className="mt-1"></div>
                                 <Select
-                                    value={FORCED_IMAGE_MODELS.xai}
-                                    onChange={() => { }}
+                                    value={imageModels.xai}
+                                    onChange={(e: any) => handleImageModelChange('xai', e.target.value)}
                                     options={AVAILABLE_IMAGE_MODELS.xai}
-                                    disabled
                                 />
                             </div>
                         </div>
@@ -234,6 +230,7 @@ export default function SettingsModal() {
     const [open, setOpen] = useState(false);
     const [key, setKey] = useState('');
     const [models, setModels] = useState(DEFAULT_MODELS);
+    const [imageModels, setImageModels] = useState(DEFAULT_IMAGE_MODELS);
     const [showDetails, setShowDetails] = useState(false);
     const [usePersonas, setUsePersonas] = useState(false);
     const [checkingCredits, setCheckingCredits] = useState(false);
@@ -254,6 +251,15 @@ export default function SettingsModal() {
             }
         }
 
+        const storedImageModels = localStorage.getItem('AI_IMAGE_MODELS_CONFIG');
+        if (storedImageModels) {
+            try {
+                setImageModels({ ...DEFAULT_IMAGE_MODELS, ...JSON.parse(storedImageModels) });
+            } catch (e) {
+                console.error("Failed to parse stored image models", e);
+            }
+        }
+
         const storedShowDetails = localStorage.getItem('CHOPPED_SHOW_DETAILS');
         if (storedShowDetails) setShowDetails(JSON.parse(storedShowDetails));
 
@@ -264,6 +270,7 @@ export default function SettingsModal() {
     const saveSettings = () => {
         localStorage.setItem('AI_GATEWAY_API_KEY', key);
         localStorage.setItem('AI_MODELS_CONFIG', JSON.stringify(models));
+        localStorage.setItem('AI_IMAGE_MODELS_CONFIG', JSON.stringify(imageModels));
         if (showDetails !== null) {
             localStorage.setItem('CHOPPED_SHOW_DETAILS', JSON.stringify(showDetails));
         }
@@ -298,6 +305,10 @@ export default function SettingsModal() {
         setModels(prev => ({ ...prev, [provider]: modelId }));
     };
 
+    const handleImageModelChange = (provider: keyof typeof DEFAULT_IMAGE_MODELS, modelId: string) => {
+        setImageModels(prev => ({ ...prev, [provider]: modelId }));
+    };
+
     return (
         <>
             <button
@@ -315,6 +326,8 @@ export default function SettingsModal() {
                     setKey={setKey}
                     models={models}
                     handleModelChange={handleModelChange}
+                    imageModels={imageModels}
+                    handleImageModelChange={handleImageModelChange}
                     saveSettings={saveSettings}
                     checkCredits={checkCredits}
                     checkingCredits={checkingCredits}

@@ -8,7 +8,7 @@ import IngredientSelect from '@/components/IngredientSelect';
 import { getIngredients, getRandomBasket, RoundType } from '@/lib/ingredients';
 import { RefreshCw, Trophy, UtensilsCrossed, ArrowRight, ChefHat, Dices, Lock, UserPlus, ShieldCheck, AlertCircle } from 'lucide-react';
 
-import { DEFAULT_MODELS, FORCED_IMAGE_MODELS } from '@/lib/models';
+import { DEFAULT_MODELS, FORCED_IMAGE_MODELS, DEFAULT_IMAGE_MODELS } from '@/lib/models';
 
 // --- Configuration ---
 // Models are now dynamic, but we keep the initial structure.
@@ -24,17 +24,25 @@ export default function ChoppedGame() {
   // --- State ---
   const [basket, setBasket] = useState<string[]>(['', '', '', '']);
   const [currentModels, setCurrentModels] = useState(DEFAULT_MODELS); // State for models to avoid hydration mismatch
+  const [currentImageModels, setCurrentImageModels] = useState(DEFAULT_IMAGE_MODELS);
   const [mounted, setMounted] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const [usePersonas, setUsePersonas] = useState(false);
   const [chefs, setChefs] = useState<Chef[]>(INITIAL_CHEFS);
+  const [dishHistory, setDishHistory] = useState<Record<ChefProvider, Dish[]>>({
+    openai: [],
+    anthropic: [],
+    google: [],
+    xai: []
+  });
   const [hasGeneratedChefs, setHasGeneratedChefs] = useState(false);
   const [chefIntrosReady, setChefIntrosReady] = useState(false);
   const [generatingChefs, setGeneratingChefs] = useState(false);
   const [chefIntroStatus, setChefIntroStatus] = useState<Record<string, 'pending' | 'done' | 'error'>>({});
-  const [revealedChefs, setRevealedChefs] = useState<Record<string, boolean>>({});
   const [lightboxImage, setLightboxImage] = useState<{ src: string; title?: string; chef?: string } | null>(null);
   const [creditsState, setCreditsState] = useState<{ status: 'checking' | 'valid' | 'invalid' | 'missing'; balance?: number; error?: string }>({ status: 'checking' });
+  const [currentChefIndex, setCurrentChefIndex] = useState(0);
+  const [hasChoppedThisRound, setHasChoppedThisRound] = useState(false);
 
   const isCreditLocked = creditsState.status !== 'valid';
 
@@ -83,6 +91,14 @@ export default function ChoppedGame() {
       } catch (e) { }
     }
 
+    const storedImageModels = localStorage.getItem('AI_IMAGE_MODELS_CONFIG');
+    if (storedImageModels) {
+      try {
+        const parsed = JSON.parse(storedImageModels);
+        setCurrentImageModels(prev => ({ ...prev, ...parsed }));
+      } catch (e) { }
+    }
+
     // Load detail preference
     const storedShowDetails = localStorage.getItem('CHOPPED_SHOW_DETAILS');
     if (storedShowDetails) setShowDetails(JSON.parse(storedShowDetails));
@@ -120,9 +136,87 @@ export default function ChoppedGame() {
     if (currentModels[id as keyof typeof DEFAULT_MODELS]) {
       config.modelId = currentModels[id as keyof typeof DEFAULT_MODELS];
     }
-    // Force the mapped fast image model for every provider to keep rounds snappy
-    config.imageModelId = FORCED_IMAGE_MODELS[id as keyof typeof FORCED_IMAGE_MODELS];
+    // Use selected image model (fallback to defaults)
+    if (currentImageModels[id as keyof typeof DEFAULT_IMAGE_MODELS]) {
+      config.imageModelId = currentImageModels[id as keyof typeof DEFAULT_IMAGE_MODELS];
+    } else {
+      config.imageModelId = DEFAULT_IMAGE_MODELS[id as keyof typeof DEFAULT_IMAGE_MODELS];
+    }
     return config;
+  };
+
+  const normalizeDishData = (payload: any) => {
+    const tryParseString = (raw: string) => {
+      if (typeof raw !== 'string') return null;
+      const cleaned = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
+      try {
+        return JSON.parse(cleaned);
+      } catch {
+        const match = cleaned.match(/{[\s\S]*}/);
+        if (match) {
+          try {
+            return JSON.parse(match[0]);
+          } catch { }
+        }
+      }
+      return null;
+    };
+
+    if (!payload) {
+      return null;
+    }
+
+    // If the payload itself is a JSON string
+    if (typeof payload === 'string') {
+      const parsed = tryParseString(payload);
+      if (parsed) return parsed;
+      return {
+        dishTitle: 'Chef Special',
+        monologue: payload,
+        shortImagePrompt: 'A beautifully plated dish.'
+      };
+    }
+
+    // If monologue accidentally contains JSON, try to parse and merge
+    if (typeof payload.monologue === 'string') {
+      const parsed = tryParseString(payload.monologue);
+      if (parsed && (parsed.monologue || parsed.dishTitle)) {
+        payload = { ...parsed, ...payload, dishTitle: parsed.dishTitle || payload.dishTitle, monologue: parsed.monologue || payload.monologue, shortImagePrompt: parsed.shortImagePrompt || payload.shortImagePrompt };
+      } else {
+        // Strip common JSON markers for display
+        payload.monologue = payload.monologue.replace(/```json/gi, '').replace(/```/g, '').trim();
+      }
+    }
+
+    return payload;
+  };
+
+  const normalizeIntroData = (payload: any) => {
+    const result = { ...payload };
+
+    const tryParseBio = (bioVal: any) => {
+      if (typeof bioVal !== 'string') return bioVal;
+      const cleaned = bioVal.replace(/```json/gi, '').replace(/```/g, '').trim();
+      try {
+        const parsed = JSON.parse(cleaned);
+        if (parsed && typeof parsed === 'object') {
+          // Prefer explicit bio/name fields
+          if (parsed.bio) result.bio = parsed.bio;
+          if (parsed.name && !result.name) result.name = parsed.name;
+          return parsed.bio || parsed.description || cleaned;
+        }
+      } catch { }
+      return cleaned;
+    };
+
+    if ('bio' in result) {
+      result.bio = tryParseBio(result.bio);
+    }
+    if ('name' in result && typeof result.name === 'string') {
+      result.name = result.name.replace(/["']/g, '').trim() || result.name;
+    }
+
+    return result;
   };
 
   const generateChefs = async () => {
@@ -156,8 +250,9 @@ export default function ChoppedGame() {
           throw new Error(err || 'Unable to introduce chef');
         }
 
-        const data = await res.json();
-        setChefs(prev => prev.map(c => c.id === id ? { ...c, name: data.name || c.name, bio: data.bio || c.bio } : c));
+        const rawData = await res.json();
+        const data = normalizeIntroData(rawData);
+        setChefs(prev => prev.map(c => c.id === id ? { ...c, name: data.name || c.name, bio: data.bio || c.bio, avatarUrl: data.imageUrl || c.avatarUrl } : c));
         statusMap[id] = 'done';
         setChefIntroStatus(prev => ({ ...prev, [id]: 'done' }));
       } catch (e) {
@@ -200,7 +295,8 @@ export default function ChoppedGame() {
       ingredients: filledIngredients,
       dishes: { openai: undefined, anthropic: undefined, google: undefined, xai: undefined } // Clear dishes
     }));
-    setRevealedChefs({});
+    setCurrentChefIndex(0);
+    setHasChoppedThisRound(false);
 
     // Trigger Generation for all active chefs
     const activeChefsIds = gameState.contestants;
@@ -262,21 +358,25 @@ export default function ChoppedGame() {
         }
         throw new Error(errorMsg);
       }
-      const textData = await textRes.json();
+      let textData = await textRes.json();
+      textData = normalizeDishData(textData) || textData;
+
+      // Build base dish
+      const baseDish: Dish = {
+        roundNumber: roundNum,
+        chefId: chef.id as ChefProvider,
+        title: textData.dishTitle,
+        description: textData.monologue,
+        ingredientsUsed: ingredients,
+        imageUrl: undefined
+      };
 
       // Update State with Text
       setGameState(prev => ({
         ...prev,
         dishes: {
           ...prev.dishes,
-          [chef.id]: {
-            roundNumber: roundNum,
-            chefId: chef.id,
-            title: textData.dishTitle,
-            description: textData.monologue,
-            ingredientsUsed: ingredients,
-            imageUrl: undefined
-          }
+          [chef.id]: baseDish
         }
       }));
       setLoadingStates(prev => ({ ...prev, [chef.id]: 'image' }));
@@ -302,17 +402,23 @@ export default function ChoppedGame() {
       })();
 
       // Update State with Image
+      const finalDish: Dish = { ...baseDish, imageUrl: finalImageUrl };
+
       setGameState(prev => ({
         ...prev,
         dishes: {
           ...prev.dishes,
-          [chef.id]: {
-            ...prev.dishes[chef.id]!,
-            imageUrl: finalImageUrl
-          }
+          [chef.id]: finalDish
         }
       }));
       setLoadingStates(prev => ({ ...prev, [chef.id]: 'done' }));
+
+      // Track history (upsert by round)
+      setDishHistory(prev => {
+        const existing = prev[chef.id] || [];
+        const filtered = existing.filter(d => d.roundNumber !== roundNum);
+        return { ...prev, [chef.id]: [...filtered, finalDish] };
+      });
 
     } catch (e) {
       console.error(`Chef ${chef.name} failed:`, e);
@@ -320,13 +426,11 @@ export default function ChoppedGame() {
     }
   };
 
-  const revealDish = (chefId: string) => {
-    setRevealedChefs(prev => ({ ...prev, [chefId]: true }));
-  };
-
   const moveToRoundOne = () => {
     if (!chefIntrosReady) return;
     setHasGeneratedChefs(true);
+    setCurrentChefIndex(0);
+    setHasChoppedThisRound(false);
   };
 
   const openLightbox = (src?: string, title?: string, chefName?: string) => {
@@ -350,6 +454,11 @@ export default function ChoppedGame() {
 
 
   const eliminateChef = (chefId: string) => {
+    if (hasChoppedThisRound) {
+      alert("You've already chopped a chef this round. Start the next round to chop again.");
+      return;
+    }
+
     const chefName = getChefConfig(chefId).name || chefId;
     if (!confirm(`Are you sure you want to CHOP ${chefName}?`)) return;
 
@@ -376,6 +485,7 @@ export default function ChoppedGame() {
       };
     });
     setBasket(['', '', '', '']); // Clear input
+    setHasChoppedThisRound(true);
   };
 
   // Calculate current round type for labelling
@@ -385,6 +495,14 @@ export default function ChoppedGame() {
 
   // Get ingredient options for the current input based on upcoming round
   const ingredientOptions = mounted ? getIngredients(currentRoundType, showDetails) : [];
+  const activeChefs = gameState.contestants.map(id => getChefConfig(id));
+  const canStartRound = !generatingChefs && hasGeneratedChefs && basket.filter(i => i.trim()).length === 4;
+
+  useEffect(() => {
+    if (currentChefIndex > activeChefs.length - 1) {
+      setCurrentChefIndex(Math.max(0, activeChefs.length - 1));
+    }
+  }, [activeChefs.length, currentChefIndex]);
 
   // --- Renders ---
 
@@ -392,26 +510,61 @@ export default function ChoppedGame() {
   if (gameState.status === 'completed') {
     const winnerId = gameState.contestants[0];
     const winner = chefs.find(c => c.id === winnerId);
+    const winnerDishes = (dishHistory[winnerId as ChefProvider] || []).sort((a, b) => a.roundNumber - b.roundNumber);
 
     return (
-      <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-8 text-center space-y-8 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-amber-900/40 via-black to-black">
-        <Trophy size={80} className="text-amber-500 animate-bounce" />
-        <h1 className="text-6xl font-black uppercase tracking-tighter bg-clip-text text-transparent bg-gradient-to-r from-amber-300 to-amber-600">
-          {winner?.name} Wins!
-        </h1>
-        <p className="text-2xl text-gray-300 max-w-2xl">
-          Champion of the Vercel AI Gateway Hackathon.
-        </p>
-        <div className="p-6 bg-gray-900 border border-amber-600 rounded-2xl shadow-2xl max-w-md mx-auto">
-          <ChefHat className="mx-auto mb-4 text-gray-500" size={40} />
-          <h3 className="text-xl font-bold mb-2">Winning Dish from Round {gameState.roundNumber}</h3>
-          <div className="prose prose-invert text-sm text-gray-400 mb-4">
-            {gameState.dishes[winnerId as ChefProvider]?.title}
+      <div className="min-h-screen bg-black text-white flex flex-col items-center p-10 space-y-10 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-amber-900/30 via-black to-black">
+        <div className="flex flex-col items-center gap-4 text-center">
+          <Trophy size={80} className="text-amber-500 animate-bounce" />
+          <h1 className="text-6xl font-black uppercase tracking-tighter bg-clip-text text-transparent bg-gradient-to-r from-amber-300 to-amber-600">
+            {winner?.name} Wins!
+          </h1>
+          <p className="text-2xl text-gray-300 max-w-2xl">
+            Champion of the Vercel AI Gateway Hackathon.
+          </p>
+          <div className="flex items-center gap-6">
+            <button
+              onClick={() => winner?.avatarUrl && openLightbox(winner.avatarUrl, `${winner.name} portrait`, winner.name)}
+              className="w-40 h-40 rounded-full overflow-hidden border-4 border-amber-500 shadow-2xl cursor-zoom-in disabled:cursor-default"
+              disabled={!winner?.avatarUrl}
+            >
+              {winner?.avatarUrl ? (
+                <img src={winner.avatarUrl} alt={winner.name} className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full bg-gray-800 flex items-center justify-center text-3xl font-bold">{winner?.name[0]}</div>
+              )}
+            </button>
+            <div className="text-left">
+              <p className="text-sm text-gray-400 uppercase tracking-wide">{winner?.modelId}</p>
+              {winner?.bio && <p className="mt-2 text-gray-300 max-w-md">{winner.bio}</p>}
+            </div>
           </div>
-          {gameState.dishes[winnerId as ChefProvider]?.imageUrl && (
-            <img src={gameState.dishes[winnerId as ChefProvider]?.imageUrl} className="rounded-lg w-full" />
-          )}
         </div>
+
+        <div className="w-full max-w-6xl">
+          <h2 className="text-3xl font-bold mb-6 text-center">Winning Menu</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {winnerDishes.map(dish => (
+              <div key={`${dish.roundNumber}-${dish.title}`} className="bg-gray-900/70 border border-amber-700/40 rounded-2xl p-4 flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs uppercase text-gray-400">Round {dish.roundNumber}</span>
+                  <ChefHat className="text-amber-400" size={18} />
+                </div>
+                <h3 className="text-xl font-semibold text-amber-300">{dish.title}</h3>
+                <p className="text-sm text-gray-300 leading-relaxed max-h-40 overflow-y-auto">{dish.description}</p>
+                {dish.imageUrl && (
+                  <button
+                    onClick={() => openLightbox(dish.imageUrl, dish.title, winner?.name)}
+                    className="w-full rounded-xl overflow-hidden border border-gray-800 cursor-zoom-in group"
+                  >
+                    <img src={dish.imageUrl} alt={dish.title} className="w-full h-48 object-cover group-hover:scale-105 transition-transform duration-500" />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
         <button
           onClick={() => window.location.reload()}
           className="px-8 py-3 bg-white text-black font-bold uppercase tracking-widest hover:scale-105 transition-transform"
@@ -498,21 +651,30 @@ export default function ChoppedGame() {
                 {generatingChefs ? 'Asking chefs for intros...' : 'Generate Chefs'}
               </button>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {chefs.map(chef => {
                   const status = chefIntroStatus[chef.id];
                   const statusText = status === 'done' ? 'Ready' : status === 'error' ? 'Retry needed' : generatingChefs ? 'Generating...' : 'Waiting';
                   const statusColor = status === 'done' ? 'text-green-400' : status === 'error' ? 'text-red-400' : 'text-amber-400';
                   return (
-                    <div key={chef.id} className="flex items-start gap-3 bg-gray-900/60 border border-gray-800 rounded-lg p-4 min-h-[150px]">
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-xs ${chef.color}`}>
-                        {chef.name[0]}
-                      </div>
-                      <div className="text-left">
-                        <p className="font-semibold text-white">{chef.name}</p>
-                        <p className="text-[11px] text-gray-400 uppercase tracking-wide">{chef.modelId}</p>
-                        {chef.bio && <p className="text-sm text-gray-200 mt-2 leading-relaxed">{chef.bio}</p>}
-                        <span className={`text-[11px] ${statusColor}`}>{statusText}</span>
+                    <div key={chef.id} className="flex items-start gap-5 bg-gray-900/70 border border-gray-800 rounded-2xl p-6 min-h-[260px]">
+                      <button
+                        onClick={() => chef.avatarUrl && openLightbox(chef.avatarUrl, `${chef.name} portrait`, chef.name)}
+                        className="w-24 h-24 rounded-full overflow-hidden bg-gray-800 border border-gray-700 flex items-center justify-center shrink-0 disabled:cursor-default shadow-inner"
+                        disabled={!chef.avatarUrl}
+                        title={chef.avatarUrl ? 'View portrait' : undefined}
+                      >
+                        {chef.avatarUrl ? (
+                          <img src={chef.avatarUrl} alt={chef.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <span className={`w-full h-full flex items-center justify-center font-bold text-xs ${chef.color}`}>{chef.name[0]}</span>
+                        )}
+                      </button>
+                      <div className="text-left flex-1">
+                        <p className="font-semibold text-white text-xl">{chef.name}</p>
+                        <p className="text-[13px] text-gray-400 uppercase tracking-wide">{chef.modelId}</p>
+                        {chef.bio && <p className="text-base text-gray-200 mt-3 leading-relaxed">{chef.bio}</p>}
+                        <span className={`text-[12px] ${statusColor}`}>{statusText}</span>
                       </div>
                     </div>
                   );
@@ -584,7 +746,8 @@ export default function ChoppedGame() {
 
                     <button
                       onClick={startRound}
-                      className="w-full bg-amber-600 hover:bg-amber-500 text-white py-4 rounded-xl font-bold text-lg transition-all flex items-center justify-center gap-2 shadow-lg shadow-amber-900/20 hover:scale-[1.01]"
+                      disabled={!canStartRound}
+                      className="w-full bg-amber-600 hover:bg-amber-500 text-white py-4 rounded-xl font-bold text-lg transition-all flex items-center justify-center gap-2 shadow-lg shadow-amber-900/20 hover:scale-[1.01] disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Open Basket & Start Round <ArrowRight size={20} />
                     </button>
@@ -614,33 +777,69 @@ export default function ChoppedGame() {
           )}
         </section>
 
-        {/* Chefs Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {chefs.map(chef => {
-            const isEliminated = gameState.eliminated.includes(chef.id);
-            const dish = gameState.dishes[chef.id];
-            const loadingInfo = loadingStates[chef.id];
+        {/* Chefs Carousel */}
+        {gameState.status !== 'idle' && (
+        <div className="mt-8">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-white">Chef Dishes</h3>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentChefIndex(prev => Math.max(0, prev - 1))}
+                className="px-3 py-2 bg-gray-800 border border-gray-700 rounded text-sm text-white disabled:opacity-40"
+                disabled={currentChefIndex === 0}
+              >
+                Prev
+              </button>
+              <button
+                onClick={() => setCurrentChefIndex(prev => Math.min(activeChefs.length - 1, prev + 1))}
+                className="px-3 py-2 bg-gray-800 border border-gray-700 rounded text-sm text-white disabled:opacity-40"
+                disabled={currentChefIndex >= activeChefs.length - 1}
+              >
+                Next
+              </button>
+            </div>
+          </div>
 
-            let cardStatus: any = 'idle';
-            if (isEliminated) cardStatus = 'eliminated';
-            else if (loadingInfo === 'text' || loadingInfo === 'image') cardStatus = 'working';
-            else if (loadingInfo === 'done' || loadingInfo === 'error') cardStatus = 'done';
+          {activeChefs.length > 0 && (
+            <div className="relative max-w-3xl mx-auto">
+              {(() => {
+                const chef = activeChefs[currentChefIndex];
+                const dish = gameState.dishes[chef.id];
+                const loadingInfo = loadingStates[chef.id];
 
-            return (
-              <ChefCard
-                key={chef.id}
-                chef={chef}
-                dish={dish}
-                status={cardStatus}
-                onEliminate={eliminateChef}
-                isStreaming={false} // Simplification for now
-                revealed={!!revealedChefs[chef.id]}
-                onReveal={() => revealDish(chef.id)}
-                onImageClick={(src?: string) => openLightbox(src, dish?.title, chef.name)}
-              />
-            );
-          })}
+                let cardStatus: any = 'idle';
+                if (loadingInfo === 'text' || loadingInfo === 'image') cardStatus = 'working';
+                else if (loadingInfo === 'done' || loadingInfo === 'error') cardStatus = 'done';
+
+                return (
+                  <ChefCard
+                    key={chef.id}
+                    chef={chef}
+                    dish={dish}
+                    status={cardStatus}
+                    onEliminate={eliminateChef}
+                    isStreaming={false}
+                    onImageClick={(src?: string) => openLightbox(src, dish?.title, chef.name)}
+                    onAvatarClick={(src?: string) => openLightbox(src, `${chef.name} portrait`, chef.name)}
+                    chopLocked={hasChoppedThisRound}
+                  />
+                );
+              })()}
+
+              <div className="flex justify-center gap-2 mt-4">
+                {activeChefs.map((c, idx) => (
+                  <button
+                    key={c.id}
+                    onClick={() => setCurrentChefIndex(idx)}
+                    className={`w-3 h-3 rounded-full ${idx === currentChefIndex ? 'bg-amber-500' : 'bg-gray-700'}`}
+                    aria-label={`View ${c.name}`}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
         </div>
+        )}
         </div>
 
         {lightboxImage && (
