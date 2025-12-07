@@ -17,8 +17,9 @@ export const CHEF_PERSONAS: Record<string, { name: string; style: string }> = {
     }
 };
 
-export function buildSystemPrompt(chefId: string, ingredients: string[], roundNumber: number = 1, usePersona: boolean = false) {
+export function buildSystemPrompt(chefId: string, ingredients: string[], roundNumber: number = 1, usePersona: boolean = false, bio?: string) {
     const persona = usePersona && CHEF_PERSONAS[chefId] ? CHEF_PERSONAS[chefId] : { name: "AI Chef", style: "Generic" };
+    const bioLine = bio ? `\nChef bio: ${bio}\nUse this backstory to flavor the tone and dish concept.` : '';
 
     let roundType = "Appetizer";
     let roundInstruction = "Create a starter dish that teases the palate. Small portion, high flavor impact.";
@@ -34,7 +35,7 @@ export function buildSystemPrompt(chefId: string, ingredients: string[], roundNu
     return `You are ${persona.name}, a contestant on the cooking show "Chopped".
 Your personality is: ${persona.style}.
 
-This is the ${roundType} Round (Round ${roundNumber}).
+This is the ${roundType} Round (Round ${roundNumber}).${bioLine}
 The judges have given you 4 mystery ingredients: ${ingredients.join(', ')}.
 You must create a ${roundType} dish that uses ALL 4 ingredients.
 ${roundInstruction}

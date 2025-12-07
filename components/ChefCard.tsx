@@ -1,7 +1,7 @@
 'use client';
 
 import { Chef, Dish } from '@/lib/types';
-import { Loader2, Utensils, Eye, Maximize2 } from 'lucide-react';
+import { Loader2, Utensils, Maximize2 } from 'lucide-react';
 
 interface ChefCardProps {
     chef: Chef;
@@ -10,16 +10,15 @@ interface ChefCardProps {
     onEliminate: (chefId: string) => void;
     isStreaming?: boolean;
     streamContent?: string;
-    revealed?: boolean;
-    onReveal?: () => void;
     onImageClick?: (src?: string) => void;
+    onAvatarClick?: (src?: string) => void;
+    chopLocked?: boolean;
 }
 
-export function ChefCard({ chef, dish, status, onEliminate, isStreaming, streamContent, revealed = false, onReveal, onImageClick }: ChefCardProps) {
+export function ChefCard({ chef, dish, status, onEliminate, isStreaming, streamContent, onImageClick, onAvatarClick, chopLocked = false }: ChefCardProps) {
     const isEliminated = status === 'eliminated';
     const isLoading = status === 'working';
-    const readyToReveal = status === 'done' && !revealed;
-    const canChop = status === 'done' && revealed;
+    const canChop = status === 'done' && !chopLocked;
     const hasDish = !!dish;
 
     // Use streamed content if available and dish is not yet finalized
@@ -34,12 +33,19 @@ export function ChefCard({ chef, dish, status, onEliminate, isStreaming, streamC
     `}>
             {/* Header */}
             <div className="p-4 bg-gray-800 border-b border-gray-700 flex justify-between items-center">
-                <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs bg-white text-black">
-                        {chef.name[0]}
-                    </div>
+                <div className="flex items-center gap-3">
+                    <button
+                        onClick={() => chef.avatarUrl && onAvatarClick?.(chef.avatarUrl)}
+                        className="w-16 h-16 rounded-full overflow-hidden bg-white text-black flex items-center justify-center font-bold text-sm disabled:cursor-default cursor-zoom-in ring-2 ring-amber-500/50"
+                        disabled={!chef.avatarUrl}
+                        title={chef.avatarUrl ? 'View portrait' : undefined}
+                    >
+                        {chef.avatarUrl ? (
+                            <img src={chef.avatarUrl} alt={chef.name} className="w-full h-full object-cover" />
+                        ) : chef.name[0]}
+                    </button>
                     <div>
-                        <h3 className="font-bold text-white text-lg">{chef.name}</h3>
+                        <h3 className="font-bold text-white text-xl leading-tight">{chef.name}</h3>
                         <span className="text-xs text-gray-400 uppercase tracking-wider">{chef.modelId}</span>
                     </div>
                 </div>
@@ -56,18 +62,6 @@ export function ChefCard({ chef, dish, status, onEliminate, isStreaming, streamC
                         <Utensils className="animate-spin mb-2" />
                         <p>Chef is cooking...</p>
                     </div>
-                ) : readyToReveal ? (
-                    <div className="flex flex-col items-center justify-center gap-3 bg-gray-800/60 border border-dashed border-amber-600 rounded-lg p-6">
-                        <Eye className="text-amber-400" />
-                        <p className="text-sm text-gray-300 font-semibold">Dish is ready. Reveal to see the results.</p>
-                        <button
-                            onClick={() => onReveal?.()}
-                            className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded font-bold flex items-center gap-2 transition-colors"
-                        >
-                            <Eye size={16} />
-                            Reveal Dish
-                        </button>
-                    </div>
                 ) : (
                     <>
                         <div className="min-h-[60px]">
@@ -81,22 +75,17 @@ export function ChefCard({ chef, dish, status, onEliminate, isStreaming, streamC
                 )}
 
                 {/* Image Area */}
-                <div className="relative w-full aspect-square bg-black rounded-lg overflow-hidden border border-gray-800">
-                    {dish?.imageUrl && revealed ? (
+                <div className="relative w-full aspect-[4/3] bg-black rounded-lg overflow-hidden border border-gray-800">
+                    {dish?.imageUrl ? (
                         <button
                             onClick={() => onImageClick?.(dish.imageUrl)}
-                            className="w-full h-full group"
+                            className="w-full h-full group cursor-zoom-in"
                         >
                             <img src={dish.imageUrl} alt={dish.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
                             <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
                                 <Maximize2 className="text-white opacity-0 group-hover:opacity-80 transition-opacity" />
                             </div>
                         </button>
-                    ) : dish?.imageUrl && !revealed ? (
-                        <div className="w-full h-full flex flex-col items-center justify-center text-gray-500 bg-gray-950">
-                            <Eye className="mb-2" />
-                            <p className="text-xs text-gray-400">Reveal to see the dish</p>
-                        </div>
                     ) : (
                         <div className="w-full h-full flex items-center justify-center text-gray-700 bg-gray-950">
                             {isLoading ? <Loader2 className="animate-spin opacity-20" size={48} /> : <Utensils className="opacity-10" size={48} />}

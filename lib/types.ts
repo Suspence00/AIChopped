@@ -6,6 +6,7 @@ export interface Chef {
     modelId: string; // e.g. "openai/gpt-4o"
     imageModelId: string; // e.g. "openai/dall-e-3"
     bio?: string;
+    avatarUrl?: string;
     color: string;
 }
 

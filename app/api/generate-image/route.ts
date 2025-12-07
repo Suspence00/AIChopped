@@ -1,6 +1,6 @@
 import { generateText } from 'ai';
 import { createGatewayClient } from '@/lib/ai';
-import { FORCED_IMAGE_MODELS } from '@/lib/models';
+import { FORCED_IMAGE_MODELS, AVAILABLE_IMAGE_MODELS } from '@/lib/models';
 
 export const runtime = 'nodejs'; // Switch to nodejs for better logging
 
@@ -11,9 +11,10 @@ export async function POST(req: Request) {
     try {
         const { prompt, apiKey, chef } = await req.json();
         const providerId = chef?.id as keyof typeof FORCED_IMAGE_MODELS | undefined;
-        const modelId = chef?.imageModelId || (providerId ? FORCED_IMAGE_MODELS[providerId] : FORCED_IMAGE_MODELS.openai);
+        const forcedModel = providerId ? FORCED_IMAGE_MODELS[providerId] : FORCED_IMAGE_MODELS.openai;
+        const allowedModels = providerId ? AVAILABLE_IMAGE_MODELS[providerId].map(m => m.id) : [];
+        const modelId = (chef?.imageModelId && allowedModels.includes(chef.imageModelId)) ? chef.imageModelId : forcedModel;
 
-        // Refined prompt for food photography
         const fullPrompt = `Generate an image of: ${prompt}. Style: high-quality professional food photography, 8k resolution, studio lighting, overhead shot, vibrant colors, photorealistic, plated beautifully on a white plate.`;
 
         const gateway = createGatewayClient(apiKey);

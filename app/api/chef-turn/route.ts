@@ -1,9 +1,7 @@
 import { generateText } from 'ai';
 import { createGatewayClient } from '@/lib/ai';
 import { buildSystemPrompt } from '@/lib/prompts';
-import { z } from 'zod';
-
-export const runtime = 'edge';
+export const runtime = 'nodejs';
 
 export async function POST(req: Request) {
     try {
@@ -22,24 +20,35 @@ export async function POST(req: Request) {
         // Assuming the Gateway supports this format.
         const { text } = await generateText({
             model: gateway(chef.modelId),
-            system: buildSystemPrompt(chef.id, ingredients, roundNumber, !!usePersonas),
+            system: buildSystemPrompt(chef.id, ingredients, roundNumber, !!usePersonas, chef.bio),
             prompt: `Here are the ingredients: ${ingredients.join(', ')}. Present your dish.`,
             temperature: 0.8,
         });
 
-        // Attempt to clean/parse JSON
-        // Models often wrap JSON in ```json ... ```
-        let cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
-        let data;
-        try {
-            data = JSON.parse(cleanText);
-        } catch (e) {
-            console.error("Failed to parse JSON from model", text);
-            // Fallback or retry? For hackathon, simple fallback.
+        const tryParse = (raw: string) => {
+            const cleaned = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
+            try {
+                return JSON.parse(cleaned);
+            } catch { }
+
+            // Try to extract first JSON object
+            const match = cleaned.match(/{[\s\S]*}/);
+            if (match) {
+                try {
+                    return JSON.parse(match[0]);
+                } catch { }
+            }
+            return null;
+        };
+
+        let data = tryParse(text);
+
+        if (!data || !data.dishTitle || !data.monologue) {
+            console.error("Failed to parse JSON from model, using fallback", text);
             data = {
-                dishTitle: "Experimental Dish",
-                monologue: text,
-                shortImagePrompt: "A mysterious experimental dish."
+                dishTitle: data?.dishTitle || "Chef's Special",
+                monologue: data?.monologue || text,
+                shortImagePrompt: data?.shortImagePrompt || "A beautifully plated dish."
             };
         }
 

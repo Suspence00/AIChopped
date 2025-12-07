@@ -4,10 +4,10 @@ export interface ModelOption {
 }
 
 export const FORCED_IMAGE_MODELS = {
-    openai: 'bfl/flux-2-flex',
-    anthropic: 'bfl/flux-2-flex',
-    google: 'bfl/flux-2-flex',
-    xai: 'bfl/flux-2-flex',
+    openai: 'google/gemini-2.5-flash-image',
+    anthropic: 'google/gemini-2.5-flash-image',
+    google: 'google/gemini-2.5-flash-image',
+    xai: 'google/gemini-2.5-flash-image',
 } as const;
 
 export const AVAILABLE_MODELS: Record<string, ModelOption[]> = {
@@ -34,30 +34,26 @@ export const DEFAULT_MODELS = {
 
 export const AVAILABLE_IMAGE_MODELS: Record<string, ModelOption[]> = {
     openai: [
-        { id: 'bfl/flux-2-flex', name: 'FLUX.2 (Flex)' },
         { id: 'google/gemini-2.5-flash-image', name: 'Gemini 2.5 Flash Image' },
         { id: 'google/gemini-2.5-flash-image-preview', name: 'Gemini 2.5 Flash Image Preview' },
     ],
     google: [
-        { id: 'bfl/flux-2-flex', name: 'FLUX.2 (Flex)' },
         { id: 'google/gemini-2.5-flash-image', name: 'Gemini 2.5 Flash Image' },
         { id: 'google/gemini-2.5-flash-image-preview', name: 'Gemini 2.5 Flash Image Preview' },
     ],
     anthropic: [
-        { id: 'bfl/flux-2-flex', name: 'FLUX.2 (Flex)' },
         { id: 'google/gemini-2.5-flash-image', name: 'Gemini 2.5 Flash Image' },
         { id: 'google/gemini-2.5-flash-image-preview', name: 'Gemini 2.5 Flash Image Preview' },
     ],
     xai: [
-        { id: 'bfl/flux-2-flex', name: 'FLUX.2 (Flex)' },
         { id: 'google/gemini-2.5-flash-image', name: 'Gemini 2.5 Flash Image' },
         { id: 'google/gemini-2.5-flash-image-preview', name: 'Gemini 2.5 Flash Image Preview' },
     ]
 };
 
 export const DEFAULT_IMAGE_MODELS = {
-    openai: 'bfl/flux-2-flex',
-    anthropic: 'bfl/flux-2-flex',
-    google: 'bfl/flux-2-flex',
-    xai: 'bfl/flux-2-flex'
+    openai: 'google/gemini-2.5-flash-image',
+    anthropic: 'google/gemini-2.5-flash-image',
+    google: 'google/gemini-2.5-flash-image',
+    xai: 'google/gemini-2.5-flash-image'
 };

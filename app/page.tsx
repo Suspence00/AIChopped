@@ -8,7 +8,7 @@ import IngredientSelect from '@/components/IngredientSelect';
 import { getIngredients, getRandomBasket, RoundType } from '@/lib/ingredients';
 import { RefreshCw, Trophy, UtensilsCrossed, ArrowRight, ChefHat, Dices, Lock, UserPlus, ShieldCheck, AlertCircle } from 'lucide-react';
 
-import { DEFAULT_MODELS, FORCED_IMAGE_MODELS, DEFAULT_IMAGE_MODELS } from '@/lib/models';
+import { DEFAULT_MODELS, FORCED_IMAGE_MODELS, DEFAULT_IMAGE_MODELS, AVAILABLE_IMAGE_MODELS } from '@/lib/models';
 
 // --- Configuration ---
 // Models are now dynamic, but we keep the initial structure.
@@ -95,7 +95,13 @@ export default function ChoppedGame() {
     if (storedImageModels) {
       try {
         const parsed = JSON.parse(storedImageModels);
-        setCurrentImageModels(prev => ({ ...prev, ...parsed }));
+        const sanitized: any = { ...DEFAULT_IMAGE_MODELS };
+        (Object.keys(DEFAULT_IMAGE_MODELS) as (keyof typeof DEFAULT_IMAGE_MODELS)[]).forEach(provider => {
+          const allowed = AVAILABLE_IMAGE_MODELS[provider].map(m => m.id);
+          const val = parsed[provider];
+          sanitized[provider] = allowed.includes(val) ? val : DEFAULT_IMAGE_MODELS[provider];
+        });
+        setCurrentImageModels(sanitized);
       } catch (e) { }
     }
 
@@ -136,12 +142,13 @@ export default function ChoppedGame() {
     if (currentModels[id as keyof typeof DEFAULT_MODELS]) {
       config.modelId = currentModels[id as keyof typeof DEFAULT_MODELS];
     }
-    // Use selected image model (fallback to defaults)
-    if (currentImageModels[id as keyof typeof DEFAULT_IMAGE_MODELS]) {
-      config.imageModelId = currentImageModels[id as keyof typeof DEFAULT_IMAGE_MODELS];
-    } else {
-      config.imageModelId = DEFAULT_IMAGE_MODELS[id as keyof typeof DEFAULT_IMAGE_MODELS];
-    }
+    // Use selected image model if valid, otherwise fall back to defaults
+    const provider = id as keyof typeof DEFAULT_IMAGE_MODELS;
+    const allowedImageModels = AVAILABLE_IMAGE_MODELS[provider].map(m => m.id);
+    const selectedImageModel = currentImageModels[provider];
+    config.imageModelId = allowedImageModels.includes(selectedImageModel)
+      ? selectedImageModel
+      : DEFAULT_IMAGE_MODELS[provider];
     return config;
   };
 
@@ -781,18 +788,18 @@ export default function ChoppedGame() {
         {gameState.status !== 'idle' && (
         <div className="mt-8">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-white">Chef Dishes</h3>
-            <div className="flex items-center gap-2">
+            <h3 className="text-xl font-semibold text-white">Chef Dishes</h3>
+            <div className="flex items-center gap-3">
               <button
                 onClick={() => setCurrentChefIndex(prev => Math.max(0, prev - 1))}
-                className="px-3 py-2 bg-gray-800 border border-gray-700 rounded text-sm text-white disabled:opacity-40"
+                className="px-5 py-3 bg-gray-800 border border-gray-700 rounded-lg text-base font-semibold text-white disabled:opacity-40 hover:border-amber-500 transition-colors"
                 disabled={currentChefIndex === 0}
               >
                 Prev
               </button>
               <button
                 onClick={() => setCurrentChefIndex(prev => Math.min(activeChefs.length - 1, prev + 1))}
-                className="px-3 py-2 bg-gray-800 border border-gray-700 rounded text-sm text-white disabled:opacity-40"
+                className="px-5 py-3 bg-gray-800 border border-gray-700 rounded-lg text-base font-semibold text-white disabled:opacity-40 hover:border-amber-500 transition-colors"
                 disabled={currentChefIndex >= activeChefs.length - 1}
               >
                 Next
