@@ -600,41 +600,43 @@ export default function ChoppedGame() {
       </header>
 
       <main className="container mx-auto px-4 py-8 max-w-7xl">
-        <div className="mb-6 p-4 border border-gray-800 rounded-xl bg-gray-900/50 flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
-          <div className="flex items-start gap-3">
-            {creditsState.status === 'valid' ? (
-              <ShieldCheck className="text-green-400 mt-1" size={20} />
-            ) : (
-              <Lock className="text-amber-400 mt-1" size={20} />
-            )}
-            <div>
-              <p className="text-sm font-semibold text-white">Enter your Vercel AI Gateway key in Settings, then validate balance.</p>
-              <p className="text-xs text-gray-400">Gameplay stays locked (greyed out) until /credits shows more than $1 remaining.</p>
-              <div className="text-xs mt-1">
-                {creditsState.status === 'valid' && (
-                  <span className="text-green-400 font-semibold">Balance OK: ${creditsState.balance?.toFixed(2)}</span>
-                )}
-                {creditsState.status !== 'valid' && (
-                  <span className="text-amber-300 flex items-center gap-2">
-                    <AlertCircle size={12} className="text-amber-500" />
-                    {creditsState.error || 'Waiting for validation...'}
-                  </span>
-                )}
+        {creditsState.status !== 'valid' && (
+          <div className="mb-6 p-4 border border-gray-800 rounded-xl bg-gray-900/50 flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
+            <div className="flex items-start gap-3">
+              {creditsState.status === 'valid' ? (
+                <ShieldCheck className="text-green-400 mt-1" size={20} />
+              ) : (
+                <Lock className="text-amber-400 mt-1" size={20} />
+              )}
+              <div>
+                <p className="text-sm font-semibold text-white">Enter your Vercel AI Gateway key in Settings, then validate balance.</p>
+                <p className="text-xs text-gray-400">Gameplay stays locked (greyed out) until /credits shows more than $1 remaining.</p>
+                <div className="text-xs mt-1">
+                  {creditsState.status === 'valid' && (
+                    <span className="text-green-400 font-semibold">Balance OK: ${creditsState.balance?.toFixed(2)}</span>
+                  )}
+                  {creditsState.status !== 'valid' && (
+                    <span className="text-amber-300 flex items-center gap-2">
+                      <AlertCircle size={12} className="text-amber-500" />
+                      {creditsState.error || 'Waiting for validation...'}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => validateCredits()}
+                disabled={creditsState.status === 'checking'}
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-sm font-semibold flex items-center gap-2 disabled:opacity-50"
+              >
+                {creditsState.status === 'checking' ? <RefreshCw size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
+                {creditsState.status === 'checking' ? 'Checking...' : 'Validate Balance'}
+              </button>
+              <span className="text-[11px] text-gray-500">Use Settings to update your API key.</span>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => validateCredits()}
-              disabled={creditsState.status === 'checking'}
-              className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-sm font-semibold flex items-center gap-2 disabled:opacity-50"
-            >
-              {creditsState.status === 'checking' ? <RefreshCw size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
-              {creditsState.status === 'checking' ? 'Checking...' : 'Validate Balance'}
-            </button>
-            <span className="text-[11px] text-gray-500">Use Settings to update your API key.</span>
-          </div>
-        </div>
+        )}
 
         <div className={`${isCreditLocked ? 'opacity-50 pointer-events-none select-none' : ''}`}>
 
