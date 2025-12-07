@@ -17,8 +17,8 @@ export const CHEF_PERSONAS: Record<string, { name: string; style: string }> = {
     }
 };
 
-export function buildSystemPrompt(chefId: string, ingredients: string[], roundNumber: number = 1) {
-    const persona = CHEF_PERSONAS[chefId] || { name: "AI Chef", style: "Generic" };
+export function buildSystemPrompt(chefId: string, ingredients: string[], roundNumber: number = 1, usePersona: boolean = false) {
+    const persona = usePersona && CHEF_PERSONAS[chefId] ? CHEF_PERSONAS[chefId] : { name: "AI Chef", style: "Generic" };
 
     let roundType = "Appetizer";
     let roundInstruction = "Create a starter dish that teases the palate. Small portion, high flavor impact.";

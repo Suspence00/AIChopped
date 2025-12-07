@@ -2,6 +2,25 @@ import episodesData from './data/chopped_episodes.json';
 
 export type RoundType = 'Appetizer' | 'Entree' | 'Dessert';
 
+/**
+ * Capitalize ingredient names properly.
+ * Handles title case while preserving certain lowercase words like "of", "and", "with".
+ */
+function capitalizeIngredient(name: string): string {
+    const lowercaseWords = new Set(['of', 'and', 'with', 'in', 'on', 'the', 'a', 'an', 'for']);
+
+    return name
+        .split(' ')
+        .map((word, index) => {
+            // Always capitalize first word, otherwise check if it's a lowercase word
+            if (index === 0 || !lowercaseWords.has(word.toLowerCase())) {
+                return word.charAt(0).toUpperCase() + word.slice(1);
+            }
+            return word.toLowerCase();
+        })
+        .join(' ');
+}
+
 export interface IngredientOption {
     value: string;
     label: string;
@@ -89,9 +108,10 @@ function processData() {
                     // if details are on. Or better, just format it like "Chicken (seen in S1 E1...)"
 
                     if (!optionMap.has(name)) {
+                        const displayName = capitalizeIngredient(name);
                         optionMap.set(name, {
-                            value: name,
-                            label: name,
+                            value: displayName,
+                            label: displayName,
                             season: ep.season,
                             episode: ep.episode_number,
                             title: ep.episode_title

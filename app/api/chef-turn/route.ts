@@ -7,7 +7,7 @@ export const runtime = 'edge';
 
 export async function POST(req: Request) {
     try {
-        const { chef, ingredients, apiKey, roundNumber } = await req.json();
+        const { chef, ingredients, apiKey, roundNumber, usePersonas } = await req.json();
 
         if (!chef || !ingredients) {
             return new Response("Missing chef or ingredients", { status: 400 });
@@ -15,12 +15,14 @@ export async function POST(req: Request) {
 
         const gateway = createGatewayClient(apiKey);
 
+        console.log(`[Chef Turn] Model: ${chef.modelId}`);
+
         // Call AI Gateway w/ the specific model for this chef
         // The model ID 'openai/gpt-4o' or 'anthropic/claude-3-5-sonnet' is passed directly
         // Assuming the Gateway supports this format.
         const { text } = await generateText({
             model: gateway(chef.modelId),
-            system: buildSystemPrompt(chef.id, ingredients, roundNumber),
+            system: buildSystemPrompt(chef.id, ingredients, roundNumber, !!usePersonas),
             prompt: `Here are the ingredients: ${ingredients.join(', ')}. Present your dish.`,
             temperature: 0.8,
         });

@@ -28,7 +28,7 @@ function Select({ value, onChange, options, disabled = false }: any) {
             >
                 {options.map((o: any) => (
                     <option key={o.id} value={o.id}>
-                        {o.name} ({o.priceTier})
+                        {o.name}
                     </option>
                 ))}
             </select>
@@ -54,7 +54,7 @@ function Button({ onClick, children, className, disabled }: any) {
 }
 
 // Modal content component
-function ModalContent({ onClose, keyValue, setKey, models, handleModelChange, saveSettings, checkCredits, checkingCredits, creditInfo, showDetails, setShowDetails }: any) {
+function ModalContent({ onClose, keyValue, setKey, models, handleModelChange, saveSettings, checkCredits, checkingCredits, creditInfo, showDetails, setShowDetails, usePersonas, setUsePersonas }: any) {
     return (
         <div
             className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-md"
@@ -92,6 +92,7 @@ function ModalContent({ onClose, keyValue, setKey, models, handleModelChange, sa
                             placeholder="vck_..."
                             className="font-mono mb-2"
                         />
+                        <p className="text-[11px] text-amber-300 mb-2">Gameplay stays greyed out until you validate a balance above $1.</p>
                         <button
                             onClick={checkCredits}
                             disabled={!keyValue || checkingCredits}
@@ -192,6 +193,15 @@ function ModalContent({ onClose, keyValue, setKey, models, handleModelChange, sa
 
                 {/* Options */}
                 <div className="px-5 py-3 border-t border-gray-700 bg-gray-900/50">
+                    <label className="flex items-center gap-2 text-xs text-gray-300 cursor-pointer mb-2">
+                        <input
+                            type="checkbox"
+                            checked={usePersonas}
+                            onChange={(e: any) => setUsePersonas(e.target.checked)}
+                            className="rounded bg-gray-700 border-gray-600 text-amber-600 focus:ring-amber-500"
+                        />
+                        Use chef personas (flavor text). Defaults off.
+                    </label>
                     <label className="flex items-center gap-2 text-xs text-gray-300 cursor-pointer">
                         <input
                             type="checkbox"
@@ -225,6 +235,7 @@ export default function SettingsModal() {
     const [key, setKey] = useState('');
     const [models, setModels] = useState(DEFAULT_MODELS);
     const [showDetails, setShowDetails] = useState(false);
+    const [usePersonas, setUsePersonas] = useState(false);
     const [checkingCredits, setCheckingCredits] = useState(false);
     const [creditInfo, setCreditInfo] = useState<{ balance?: string, total_used?: string, error?: string } | null>(null);
     const [mounted, setMounted] = useState(false);
@@ -245,6 +256,9 @@ export default function SettingsModal() {
 
         const storedShowDetails = localStorage.getItem('CHOPPED_SHOW_DETAILS');
         if (storedShowDetails) setShowDetails(JSON.parse(storedShowDetails));
+
+        const storedPersonas = localStorage.getItem('CEF_PERSONAS_ENABLED');
+        if (storedPersonas) setUsePersonas(JSON.parse(storedPersonas));
     }, []);
 
     const saveSettings = () => {
@@ -253,6 +267,7 @@ export default function SettingsModal() {
         if (showDetails !== null) {
             localStorage.setItem('CHOPPED_SHOW_DETAILS', JSON.stringify(showDetails));
         }
+        localStorage.setItem('CEF_PERSONAS_ENABLED', JSON.stringify(usePersonas));
         setOpen(false);
         window.location.reload();
     };
@@ -306,6 +321,8 @@ export default function SettingsModal() {
                     creditInfo={creditInfo}
                     showDetails={showDetails}
                     setShowDetails={setShowDetails}
+                    usePersonas={usePersonas}
+                    setUsePersonas={setUsePersonas}
                 />,
                 document.body
             )}
