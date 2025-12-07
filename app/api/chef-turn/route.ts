@@ -7,7 +7,7 @@ export const runtime = 'edge';
 
 export async function POST(req: Request) {
     try {
-        const { chef, ingredients, apiKey } = await req.json();
+        const { chef, ingredients, apiKey, roundNumber } = await req.json();
 
         if (!chef || !ingredients) {
             return new Response("Missing chef or ingredients", { status: 400 });
@@ -20,7 +20,7 @@ export async function POST(req: Request) {
         // Assuming the Gateway supports this format.
         const { text } = await generateText({
             model: gateway(chef.modelId),
-            system: buildSystemPrompt(chef.id, ingredients),
+            system: buildSystemPrompt(chef.id, ingredients, roundNumber),
             prompt: `Here are the ingredients: ${ingredients.join(', ')}. Present your dish.`,
             temperature: 0.8,
         });

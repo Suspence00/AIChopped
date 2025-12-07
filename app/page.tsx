@@ -4,25 +4,48 @@ import { useState, useEffect } from 'react';
 import { Chef, Dish, RoundState, ChefProvider } from '@/lib/types';
 import { ChefCard } from '@/components/ChefCard';
 import SettingsModal from '@/components/SettingsModal';
-import { RefreshCw, Trophy, UtensilsCrossed, ArrowRight, ChefHat } from 'lucide-react';
+import IngredientSelect from '@/components/IngredientSelect';
+import { getIngredients, getRandomBasket, RoundType } from '@/lib/ingredients';
+import { RefreshCw, Trophy, UtensilsCrossed, ArrowRight, ChefHat, Dices } from 'lucide-react';
 
-import { DEFAULT_MODELS } from '@/lib/models';
+import { DEFAULT_MODELS, FORCED_IMAGE_MODELS } from '@/lib/models';
 
 // --- Configuration ---
 // Models are now dynamic, but we keep the initial structure.
 const INITIAL_CHEFS: Chef[] = [
-  { id: 'openai', name: 'Chef GPT', modelId: DEFAULT_MODELS.openai, imageModelId: 'openai/dall-e-3', color: 'bg-green-600' },
-  { id: 'anthropic', name: 'Chef Claude', modelId: DEFAULT_MODELS.anthropic, imageModelId: 'openai/dall-e-3', color: 'bg-orange-600' },
-  { id: 'google', name: 'Chef Gemini', modelId: DEFAULT_MODELS.google, imageModelId: 'openai/dall-e-3', color: 'bg-blue-600' },
-  { id: 'xai', name: 'Chef Grok', modelId: DEFAULT_MODELS.xai, imageModelId: 'openai/dall-e-3', color: 'bg-gray-600' },
+  { id: 'openai', name: 'Chef GPT', modelId: DEFAULT_MODELS.openai, imageModelId: FORCED_IMAGE_MODELS.openai, color: 'bg-green-600' },
+  { id: 'anthropic', name: 'Chef Claude', modelId: DEFAULT_MODELS.anthropic, imageModelId: FORCED_IMAGE_MODELS.anthropic, color: 'bg-orange-600' },
+  { id: 'google', name: 'Chef Gemini', modelId: DEFAULT_MODELS.google, imageModelId: FORCED_IMAGE_MODELS.google, color: 'bg-blue-600' },
+  { id: 'xai', name: 'Chef Grok', modelId: DEFAULT_MODELS.xai, imageModelId: FORCED_IMAGE_MODELS.xai, color: 'bg-gray-600' },
 ];
-// Note: Using DALL-E 3 for everyone for consistency and availability via standard Gateway routes, 
-// as image models vary wildly by provider availability in the SDK. 
-// Ideally we'd use 'google/imagen-3' etc if supported.
+// Image generation is locked to Gemini 2.5 image models (Nano Banana or preview variant) per provider to keep turnaround times low.
 
 export default function ChoppedGame() {
   // --- State ---
-  const [ingredients, setIngredients] = useState('');
+  const [basket, setBasket] = useState<string[]>(['', '', '', '']);
+  const [currentModels, setCurrentModels] = useState(DEFAULT_MODELS); // State for models to avoid hydration mismatch
+  const [mounted, setMounted] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
+
+  // Load settings on mount
+  useEffect(() => {
+    setMounted(true);
+    const storedModels = localStorage.getItem('AI_MODELS_CONFIG');
+    if (storedModels) {
+      try {
+        const parsed = JSON.parse(storedModels);
+        setCurrentModels(prev => ({ ...prev, ...parsed }));
+      } catch (e) { }
+    }
+
+    // Load detail preference
+    const storedShowDetails = localStorage.getItem('CHOPPED_SHOW_DETAILS');
+    if (storedShowDetails) setShowDetails(JSON.parse(storedShowDetails));
+
+    // Listen for storage events or custom events if SettingsModal updates localstorage but doesn't window.reload
+    // But SettingsModal currently does window.location.reload() which works fine.
+  }, []);
+
   const [gameState, setGameState] = useState<RoundState>({
     roundNumber: 0,
     status: 'idle',
@@ -34,52 +57,25 @@ export default function ChoppedGame() {
 
   const [loadingStates, setLoadingStates] = useState<Record<string, 'idle' | 'text' | 'image' | 'done' | 'error'>>({});
 
-  // --- Actions ---
-
-  // Load settings on mount
-  useEffect(() => {
-    const storedModels = localStorage.getItem('AI_MODELS_CONFIG');
-    if (storedModels) {
-      try {
-        const models = JSON.parse(storedModels);
-        // Update the chefs in the game state or just the global config used when starting?
-        // Since we start from idle, we can just ensure we use the current config when starting/restarting.
-        // But INITIAL_CHEFS is static. Let's update `gameState.contestants` logic or how we get chefs.
-        // A better way: store chefs in state or ref.
-        // Actually, we can just force update the CHEF objects in the state if we are idle?
-        // Or simpler: We don't store "Chef Objects" in state, we store IDs.
-        // But we need the modelId to call the API.
-        // Let's create a derived variable or Ref for "Current Chef Configs".
-      } catch (e) { }
-    }
-  }, []);
 
   const getChefConfig = (id: string) => {
-    // Helper to get chef config with potentially updated model
     const base = INITIAL_CHEFS.find(c => c.id === id)!;
-
-    // Check local storage directly for freshest config at start of round
-    // (A bit hacky but ensures we get latest without complex state sync)
-    // In a real app we'd use a Context.
-    if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem('AI_MODELS_CONFIG');
-      if (stored) {
-        const customs = JSON.parse(stored);
-        if (customs[id]) {
-          return { ...base, modelId: customs[id] };
-        }
-      }
+    // Use state instead of direct localStorage access during render
+    const config = { ...base };
+    if (currentModels[id as keyof typeof DEFAULT_MODELS]) {
+      config.modelId = currentModels[id as keyof typeof DEFAULT_MODELS];
     }
-    return base;
+    // Force the mapped fast image model for every provider to keep rounds snappy
+    config.imageModelId = FORCED_IMAGE_MODELS[id as keyof typeof FORCED_IMAGE_MODELS];
+    return config;
   };
 
   const startRound = async () => {
-    if (!ingredients.trim()) return alert("Please enter ingredients!");
-
-    // Parse ingredients
-    const ingredientList = ingredients.split(',').map(s => s.trim()).filter(Boolean);
-    if (ingredientList.length !== 4) {
-      if (!confirm("Chopped usually has 4 ingredients. Are you sure?")) return;
+    // Validate inputs
+    const filledIngredients = basket.filter(i => i.trim());
+    if (filledIngredients.length !== 4) {
+      alert("Please select 4 ingredients!");
+      return;
     }
 
     const nextRound = gameState.roundNumber + 1;
@@ -89,7 +85,7 @@ export default function ChoppedGame() {
       ...prev,
       roundNumber: nextRound,
       status: 'working',
-      ingredients: ingredientList,
+      ingredients: filledIngredients,
       dishes: { openai: undefined, anthropic: undefined, google: undefined, xai: undefined } // Clear dishes
     }));
 
@@ -104,8 +100,31 @@ export default function ChoppedGame() {
     // Parallel Execution
     activeChefsIds.forEach(id => {
       const chefConfig = getChefConfig(id);
-      processChefTurn(chefConfig, ingredientList, nextRound);
+      processChefTurn(chefConfig, filledIngredients, nextRound);
     });
+  };
+
+  const handleBasketChange = (index: number, val: string) => {
+    const newBasket = [...basket];
+    newBasket[index] = val;
+    setBasket(newBasket);
+  };
+
+  const randomizeBasket = () => {
+    // Determine round type - default to Appetizer if round 0, else follow sequence
+    const rNum = gameState.roundNumber + 1;
+    let type: RoundType = 'Appetizer';
+    if (rNum === 2) type = 'Entree';
+    if (rNum === 3) type = 'Dessert';
+
+    // If completed or >3, pick random? Default to Appetizer for now unless we loop.
+    if (rNum > 3) {
+      const types: RoundType[] = ['Appetizer', 'Entree', 'Dessert'];
+      type = types[Math.floor(Math.random() * types.length)];
+    }
+
+    const randomIngredients = getRandomBasket(type);
+    setBasket(randomIngredients);
   };
 
   const processChefTurn = async (chef: Chef, ingredients: string[], roundNum: number) => {
@@ -115,10 +134,19 @@ export default function ChoppedGame() {
       // 1. Generate Text
       const textRes = await fetch('/api/chef-turn', {
         method: 'POST',
-        body: JSON.stringify({ chef, ingredients, apiKey })
+        body: JSON.stringify({ chef, ingredients, apiKey, roundNumber: roundNum })
       });
 
-      if (!textRes.ok) throw new Error('Text Gen Failed');
+      if (!textRes.ok) {
+        let errorMsg = 'Text Gen Failed';
+        try {
+          const errData = await textRes.json();
+          if (errData.error) errorMsg += `: ${errData.error}`;
+        } catch (e) {
+          errorMsg += `: ${textRes.status} ${textRes.statusText}`;
+        }
+        throw new Error(errorMsg);
+      }
       const textData = await textRes.json();
 
       // Update State with Text
@@ -151,6 +179,13 @@ export default function ChoppedGame() {
       if (!imgRes.ok) throw new Error('Image Gen Failed');
       const imgData = await imgRes.json(); // Expect { imageUrl: base64 }
 
+      const finalImageUrl = (() => {
+        if (!imgData?.imageUrl) return undefined;
+        if (imgData.isUrl) return imgData.imageUrl;
+        if (typeof imgData.imageUrl === 'string' && imgData.imageUrl.startsWith('data:image')) return imgData.imageUrl;
+        return `data:image/png;base64,${imgData.imageUrl}`;
+      })();
+
       // Update State with Image
       setGameState(prev => ({
         ...prev,
@@ -158,7 +193,7 @@ export default function ChoppedGame() {
           ...prev.dishes,
           [chef.id]: {
             ...prev.dishes[chef.id]!,
-            imageUrl: `data:image/png;base64,${imgData.imageUrl}`
+            imageUrl: finalImageUrl
           }
         }
       }));
@@ -208,8 +243,16 @@ export default function ChoppedGame() {
         ingredients: [] // Clear for next round
       };
     });
-    setIngredients(''); // Clear input
+    setBasket(['', '', '', '']); // Clear input
   };
+
+  // Calculate current round type for labelling
+  const currentRoundType = (gameState.roundNumber + 1) === 1 ? 'Appetizer' :
+    (gameState.roundNumber + 1) === 2 ? 'Entree' :
+      (gameState.roundNumber + 1) === 3 ? 'Dessert' : 'Mystery Round';
+
+  // Get ingredient options for the current input based on upcoming round
+  const ingredientOptions = mounted ? getIngredients(currentRoundType, showDetails) : [];
 
   // --- Renders ---
 
@@ -269,25 +312,59 @@ export default function ChoppedGame() {
         {/* Round Controls */}
         <section className="mb-12 text-center space-y-6">
           {gameState.status === 'idle' && (
-            <div className="max-w-xl mx-auto space-y-4 animate-in fade-in slide-in-from-top-4 duration-700">
-              <h2 className="text-3xl font-light text-gray-300">
-                Round {gameState.roundNumber + 1}
-              </h2>
-              <p className="text-gray-500">Enter 4 mystery ingredients to start the clock.</p>
+            <div className="max-w-2xl mx-auto space-y-4 animate-in fade-in slide-in-from-top-4 duration-700">
+              <div className="flex items-baseline justify-center gap-3">
+                <h2 className="text-3xl font-light text-gray-300">
+                  Round {gameState.roundNumber + 1}:
+                </h2>
+                <h2 className="text-3xl font-bold text-amber-500 uppercase">{currentRoundType}</h2>
+              </div>
+              <p className="text-gray-500">Select 4 mystery ingredients to start the clock.</p>
 
-              <div className="flex gap-2 relative">
-                <input
-                  value={ingredients}
-                  onChange={e => setIngredients(e.target.value)}
-                  placeholder="e.g. Octopus, Gummy Bears, Kale, Duck Fat"
-                  className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-4 py-4 text-lg focus:ring-2 focus:ring-amber-600 outline-none transition-all placeholder:text-gray-700"
-                  onKeyDown={e => e.key === 'Enter' && startRound()}
-                />
+              <div className="bg-gray-900/50 p-6 rounded-2xl border border-gray-800">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest">Basket Items</h3>
+                  <button
+                    onClick={randomizeBasket}
+                    className="flex items-center gap-2 text-xs font-bold text-amber-500 hover:text-amber-400 transition-colors uppercase"
+                  >
+                    <Dices size={16} />
+                    Randomize Basket
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                  <IngredientSelect
+                    value={basket[0]}
+                    onChange={v => handleBasketChange(0, v)}
+                    options={ingredientOptions}
+                    placeholder="Item 1"
+                  />
+                  <IngredientSelect
+                    value={basket[1]}
+                    onChange={v => handleBasketChange(1, v)}
+                    options={ingredientOptions}
+                    placeholder="Item 2"
+                  />
+                  <IngredientSelect
+                    value={basket[2]}
+                    onChange={v => handleBasketChange(2, v)}
+                    options={ingredientOptions}
+                    placeholder="Item 3"
+                  />
+                  <IngredientSelect
+                    value={basket[3]}
+                    onChange={v => handleBasketChange(3, v)}
+                    options={ingredientOptions}
+                    placeholder="Item 4"
+                  />
+                </div>
+
                 <button
                   onClick={startRound}
-                  className="absolute right-2 top-2 bottom-2 bg-amber-600 hover:bg-amber-500 text-white px-6 rounded font-bold transition-colors flex items-center gap-2"
+                  className="w-full bg-amber-600 hover:bg-amber-500 text-white py-4 rounded-xl font-bold text-lg transition-all flex items-center justify-center gap-2 shadow-lg shadow-amber-900/20 hover:scale-[1.01]"
                 >
-                  Open Basket <ArrowRight size={18} />
+                  Open Basket & Start Round <ArrowRight size={20} />
                 </button>
               </div>
             </div>
@@ -295,7 +372,12 @@ export default function ChoppedGame() {
 
           {gameState.status !== 'idle' && (
             <div className="flex flex-col items-center">
-              <h2 className="text-4xl font-black text-white mb-2 uppercase tracking-tight">Round {gameState.roundNumber}</h2>
+              <h2 className="text-4xl font-black text-white mb-2 uppercase tracking-tight">
+                {gameState.roundNumber === 1 ? 'Appetizer' :
+                  gameState.roundNumber === 2 ? 'Entree' :
+                    gameState.roundNumber === 3 ? 'Dessert' :
+                      `Round ${gameState.roundNumber}`} Round
+              </h2>
               <div className="flex gap-2 text-amber-500 font-mono text-sm border border-amber-900/50 bg-amber-950/20 px-4 py-2 rounded-full">
                 {gameState.ingredients.join(' • ')}
               </div>

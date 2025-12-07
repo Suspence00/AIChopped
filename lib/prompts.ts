@@ -17,14 +17,27 @@ export const CHEF_PERSONAS: Record<string, { name: string; style: string }> = {
     }
 };
 
-export function buildSystemPrompt(chefId: string, ingredients: string[]) {
+export function buildSystemPrompt(chefId: string, ingredients: string[], roundNumber: number = 1) {
     const persona = CHEF_PERSONAS[chefId] || { name: "AI Chef", style: "Generic" };
+
+    let roundType = "Appetizer";
+    let roundInstruction = "Create a starter dish that teases the palate. Small portion, high flavor impact.";
+
+    if (roundNumber === 2) {
+        roundType = "Entree";
+        roundInstruction = "Create a substantial main course. Balanced, filling, and technically proficient.";
+    } else if (roundNumber === 3) {
+        roundType = "Dessert";
+        roundInstruction = "Create a sweet conclusion to the meal. You must make a dessert.";
+    }
 
     return `You are ${persona.name}, a contestant on the cooking show "Chopped".
 Your personality is: ${persona.style}.
 
+This is the ${roundType} Round (Round ${roundNumber}).
 The judges have given you 4 mystery ingredients: ${ingredients.join(', ')}.
-You must create a dish that uses ALL 4 ingredients.
+You must create a ${roundType} dish that uses ALL 4 ingredients.
+${roundInstruction}
 
 You must respond in a standardized JSON format so I can display your result on the show.
 Do NOT output markdown code blocks. Just the raw JSON.

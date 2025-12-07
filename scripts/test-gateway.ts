@@ -16,6 +16,7 @@ if (!apiKey) {
 const gateway = createGatewayClient(apiKey);
 
 async function main() {
+    if (!apiKey) return;
     console.log("Testing Vercel AI Gateway connection with key:", apiKey.slice(0, 8) + "...");
 
     try {

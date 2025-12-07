@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Settings, Lock, CheckCircle, AlertCircle, RefreshCw, Wallet } from 'lucide-react';
-import { AVAILABLE_MODELS, DEFAULT_MODELS } from '@/lib/models';
+import { AVAILABLE_MODELS, DEFAULT_MODELS, AVAILABLE_IMAGE_MODELS, FORCED_IMAGE_MODELS } from '@/lib/models';
 
 function Input({ value, onChange, placeholder, type = "text", className = "" }: any) {
     return (
@@ -17,13 +17,14 @@ function Input({ value, onChange, placeholder, type = "text", className = "" }: 
     );
 }
 
-function Select({ value, onChange, options }: any) {
+function Select({ value, onChange, options, disabled = false }: any) {
     return (
         <div className="relative">
             <select
                 value={value}
                 onChange={onChange}
-                className="w-full p-1.5 border border-gray-700 bg-gray-900 rounded text-white focus:outline-none focus:ring-2 focus:ring-amber-500 appearance-none pr-8 cursor-pointer text-xs"
+                disabled={disabled}
+                className="w-full p-1.5 border border-gray-700 bg-gray-900 rounded text-white focus:outline-none focus:ring-2 focus:ring-amber-500 appearance-none pr-8 cursor-pointer text-xs disabled:opacity-50 disabled:cursor-not-allowed"
             >
                 {options.map((o: any) => (
                     <option key={o.id} value={o.id}>
@@ -53,7 +54,7 @@ function Button({ onClick, children, className, disabled }: any) {
 }
 
 // Modal content component
-function ModalContent({ onClose, keyValue, setKey, models, handleModelChange, saveSettings, checkCredits, checkingCredits, creditInfo }: any) {
+function ModalContent({ onClose, keyValue, setKey, models, handleModelChange, saveSettings, checkCredits, checkingCredits, creditInfo, showDetails, setShowDetails }: any) {
     return (
         <div
             className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-md"
@@ -120,13 +121,24 @@ function ModalContent({ onClose, keyValue, setKey, models, handleModelChange, sa
                     {/* Right: Model Selection */}
                     <div className="p-4 md:w-2/3">
                         <h3 className="text-xs font-bold text-gray-300 uppercase mb-3">2. Chef Models (Optional)</h3>
-                        <div className="grid grid-cols-2 gap-3">
+                        <p className="text-[11px] text-gray-400 mb-3">Image generation is locked per chef: Nano Banana (Gemini 2.5 Flash Image) for OpenAI/Anthropic/xAI, and Gemini 2.5 Flash Image Preview for Google.</p>
+
+
+
+                        <div className="grid grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto pr-2">
                             <div>
                                 <label className="block text-xs font-semibold text-green-400 mb-1">OpenAI</label>
                                 <Select
                                     value={models.openai}
                                     onChange={(e: any) => handleModelChange('openai', e.target.value)}
                                     options={AVAILABLE_MODELS.openai}
+                                />
+                                <div className="mt-1"></div>
+                                <Select
+                                    value={FORCED_IMAGE_MODELS.openai}
+                                    onChange={() => { }}
+                                    options={AVAILABLE_IMAGE_MODELS.openai}
+                                    disabled
                                 />
                             </div>
                             <div>
@@ -136,6 +148,13 @@ function ModalContent({ onClose, keyValue, setKey, models, handleModelChange, sa
                                     onChange={(e: any) => handleModelChange('anthropic', e.target.value)}
                                     options={AVAILABLE_MODELS.anthropic}
                                 />
+                                <div className="mt-1"></div>
+                                <Select
+                                    value={FORCED_IMAGE_MODELS.anthropic}
+                                    onChange={() => { }}
+                                    options={AVAILABLE_IMAGE_MODELS.anthropic}
+                                    disabled
+                                />
                             </div>
                             <div>
                                 <label className="block text-xs font-semibold text-blue-400 mb-1">Google</label>
@@ -143,6 +162,13 @@ function ModalContent({ onClose, keyValue, setKey, models, handleModelChange, sa
                                     value={models.google}
                                     onChange={(e: any) => handleModelChange('google', e.target.value)}
                                     options={AVAILABLE_MODELS.google}
+                                />
+                                <div className="mt-1"></div>
+                                <Select
+                                    value={FORCED_IMAGE_MODELS.google}
+                                    onChange={() => { }}
+                                    options={AVAILABLE_IMAGE_MODELS.google}
+                                    disabled
                                 />
                             </div>
                             <div>
@@ -152,9 +178,29 @@ function ModalContent({ onClose, keyValue, setKey, models, handleModelChange, sa
                                     onChange={(e: any) => handleModelChange('xai', e.target.value)}
                                     options={AVAILABLE_MODELS.xai}
                                 />
+                                <div className="mt-1"></div>
+                                <Select
+                                    value={FORCED_IMAGE_MODELS.xai}
+                                    onChange={() => { }}
+                                    options={AVAILABLE_IMAGE_MODELS.xai}
+                                    disabled
+                                />
                             </div>
                         </div>
                     </div>
+                </div>
+
+                {/* Options */}
+                <div className="px-5 py-3 border-t border-gray-700 bg-gray-900/50">
+                    <label className="flex items-center gap-2 text-xs text-gray-300 cursor-pointer">
+                        <input
+                            type="checkbox"
+                            checked={showDetails}
+                            onChange={(e: any) => setShowDetails(e.target.checked)}
+                            className="rounded bg-gray-700 border-gray-600 text-amber-600 focus:ring-amber-500"
+                        />
+                        Show extra detail for ingredients (Season/Episode)
+                    </label>
                 </div>
 
                 {/* Footer */}
@@ -170,7 +216,7 @@ function ModalContent({ onClose, keyValue, setKey, models, handleModelChange, sa
                     </Button>
                 </div>
             </div>
-        </div>
+        </div >
     );
 }
 
@@ -178,6 +224,7 @@ export default function SettingsModal() {
     const [open, setOpen] = useState(false);
     const [key, setKey] = useState('');
     const [models, setModels] = useState(DEFAULT_MODELS);
+    const [showDetails, setShowDetails] = useState(false);
     const [checkingCredits, setCheckingCredits] = useState(false);
     const [creditInfo, setCreditInfo] = useState<{ balance?: string, total_used?: string, error?: string } | null>(null);
     const [mounted, setMounted] = useState(false);
@@ -195,11 +242,17 @@ export default function SettingsModal() {
                 console.error("Failed to parse stored models", e);
             }
         }
+
+        const storedShowDetails = localStorage.getItem('CHOPPED_SHOW_DETAILS');
+        if (storedShowDetails) setShowDetails(JSON.parse(storedShowDetails));
     }, []);
 
     const saveSettings = () => {
         localStorage.setItem('AI_GATEWAY_API_KEY', key);
         localStorage.setItem('AI_MODELS_CONFIG', JSON.stringify(models));
+        if (showDetails !== null) {
+            localStorage.setItem('CHOPPED_SHOW_DETAILS', JSON.stringify(showDetails));
+        }
         setOpen(false);
         window.location.reload();
     };
@@ -224,6 +277,7 @@ export default function SettingsModal() {
             setCheckingCredits(false);
         }
     };
+
 
     const handleModelChange = (provider: keyof typeof DEFAULT_MODELS, modelId: string) => {
         setModels(prev => ({ ...prev, [provider]: modelId }));
@@ -250,6 +304,8 @@ export default function SettingsModal() {
                     checkCredits={checkCredits}
                     checkingCredits={checkingCredits}
                     creditInfo={creditInfo}
+                    showDetails={showDetails}
+                    setShowDetails={setShowDetails}
                 />,
                 document.body
             )}
