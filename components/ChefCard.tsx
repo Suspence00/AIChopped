@@ -73,7 +73,7 @@ export function ChefCard({ chef, dish, status, onEliminate, isStreaming, streamC
                     </div>
                 ) : (
                     <>
-                        <div className="min-h-[60px]">
+                        <div className="min-h-[36px]">
                             <h4 className="font-serif text-xl text-amber-500 mb-1 leading-snug">{displayTitle}</h4>
                         </div>
 

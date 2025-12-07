@@ -17,6 +17,7 @@ export interface Dish {
     description: string; // The monologue
     imageUrl?: string;
     ingredientsUsed: string[];
+    shortImagePrompt?: string;
 }
 
 export interface RoundState {

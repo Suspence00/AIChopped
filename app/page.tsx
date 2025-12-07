@@ -785,9 +785,9 @@ export default function ChoppedGame() {
           <div className="flex items-center gap-3">
             <button
               onClick={() => demoMode ? window.location.reload() : enterDemoMode()}
-              className={`px-3 py-2 rounded-lg text-sm font-semibold border transition-colors ${demoMode ? 'bg-emerald-700/60 border-emerald-400 text-white' : 'bg-gray-900 border-gray-700 text-amber-400 hover:border-amber-500'}`}
+              className={`px-4 py-2 rounded-lg text-xs font-semibold border transition-colors ${demoMode ? 'bg-emerald-700/60 border-emerald-400 text-white' : 'bg-gray-900 border-gray-700 text-amber-300 hover:border-amber-500'}`}
             >
-              {demoMode ? 'Exit Example Game' : 'Example Game'}
+              {demoMode ? 'Exit Example Game' : 'Example Game (Free!)'}
             </button>
             <SettingsModal />
           </div>
@@ -807,20 +807,23 @@ export default function ChoppedGame() {
 
         {creditsState.status !== 'valid' && (
           <div className="mb-6 p-4 border border-gray-800 rounded-xl bg-gray-900/50 flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
-            <div className="flex items-start gap-3">
-              {creditsState.status === 'valid' ? (
-                <ShieldCheck className="text-green-400 mt-1" size={20} />
-              ) : (
-                <Lock className="text-amber-400 mt-1" size={20} />
-              )}
-              <div>
-                <p className="text-sm font-semibold text-white">Enter your Vercel AI Gateway key in Settings, then validate balance.</p>
-                <p className="text-xs text-gray-400">Gameplay stays locked (greyed out) until /credits shows more than $1 remaining.</p>
-                <div className="text-xs mt-1">
-                  {creditsState.status === 'valid' && (
-                    <span className="text-green-400 font-semibold">Balance OK: ${creditsState.balance?.toFixed(2)}</span>
+              <div className="flex items-start gap-3">
+                {creditsState.status === 'valid' ? (
+                  <ShieldCheck className="text-green-400 mt-1" size={20} />
+                ) : (
+                  <Lock className="text-amber-400 mt-1" size={20} />
+                )}
+                <div>
+                  <p className="text-sm font-semibold text-white">Enter your Vercel AI Gateway key in Settings, then validate balance.</p>
+                  <p className="text-xs text-gray-400">Gameplay stays locked (greyed out) until /credits shows more than $1 remaining.</p>
+                  {creditsState.status === 'missing' && (
+                    <p className="text-xs text-emerald-300 mt-1">No key handy? Try the Example Game (Free!) to preview the flow without spending credits.</p>
                   )}
-                  {creditsState.status !== 'valid' && (
+                  <div className="text-xs mt-1">
+                    {creditsState.status === 'valid' && (
+                      <span className="text-green-400 font-semibold">Balance OK: ${creditsState.balance?.toFixed(2)}</span>
+                    )}
+                    {creditsState.status !== 'valid' && (
                     <span className="text-amber-300 flex items-center gap-2">
                       <AlertCircle size={12} className="text-amber-500" />
                       {creditsState.error || 'Waiting for validation...'}

@@ -12,10 +12,10 @@ export const demoChefs: Chef[] = [
   },
   {
     "id": "google",
-    "name": "Chef Gemini",
+    "name": "Chef Maya Rodriguez",
     "modelId": "google/gemini-2.5-flash-lite",
     "color": "bg-blue-600",
-    "bio": "Inventive Southern comfort chef blending her grandma's recipes with modern technique and playful, soulful plating.",
+    "bio": "From her family's bustling taco truck, Maya brings generations of flavor to the competition!",
     "avatarUrl": "/demo/chef-google.png",
     "imageModelId": "google/gemini-2.5-flash-image"
   },
