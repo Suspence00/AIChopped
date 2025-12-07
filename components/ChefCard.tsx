@@ -27,6 +27,15 @@ export function ChefCard({ chef, dish, status, onEliminate, isStreaming, streamC
     const displayTitle = hasDish ? title : (status === 'done' ? "No dish returned" : title);
     const displayDescription = hasDish ? description : (status === 'done' ? "The chef could not plate a dish this round." : description);
 
+    const renderParagraphs = (text?: string) => {
+        if (!text) return null;
+        const parts = text.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
+        if (!parts.length) return <p className="whitespace-pre-wrap">{text}</p>;
+        return parts.map((p, idx) => (
+            <p key={idx} className="whitespace-pre-wrap leading-relaxed mb-3 last:mb-0">{p}</p>
+        ));
+    };
+
     return (
         <div className={`relative flex flex-col h-full bg-gray-900 border rounded-xl overflow-hidden transition-all duration-500
       ${isEliminated ? 'border-red-900 opacity-50 grayscale' : 'border-gray-700 hover:border-amber-500 shadow-lg'}
@@ -69,7 +78,7 @@ export function ChefCard({ chef, dish, status, onEliminate, isStreaming, streamC
                         </div>
 
                         <div className="prose prose-invert prose-sm text-gray-300 flex-1 min-h-[120px] max-h-72 overflow-y-auto">
-                            <p className="whitespace-pre-wrap">{displayDescription}</p>
+                            {renderParagraphs(displayDescription)}
                         </div>
                     </>
                 )}

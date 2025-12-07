@@ -168,16 +168,37 @@ export default function ChoppedGame() {
     return null;
   };
 
+  const formatMonologueText = (raw: string) => {
+    if (!raw) return raw;
+    const normalized = raw.replace(/\r\n/g, '\n').trim();
+    // If author already provided breaks, preserve them while reducing single newlines.
+    if (normalized.includes('\n')) {
+      return normalized
+        .split(/\n+/)
+        .map(p => p.trim())
+        .filter(Boolean)
+        .join('\n\n');
+    }
+    // Otherwise, chunk sentences into short paragraphs (two sentences per paragraph).
+    const sentences = normalized.split(/(?<=[.!?])\s+(?=[A-Z0-9])/);
+    if (sentences.length <= 1) return normalized;
+    const paragraphs: string[] = [];
+    for (let i = 0; i < sentences.length; i += 2) {
+      paragraphs.push(sentences.slice(i, i + 2).join(' '));
+    }
+    return paragraphs.join('\n\n');
+  };
+
   const cleanMonologue = (raw: string) => {
     if (!raw) return raw;
     const parsed = tryParseJsonString(raw);
-    if (parsed?.monologue && typeof parsed.monologue === 'string') return parsed.monologue.trim();
+    if (parsed?.monologue && typeof parsed.monologue === 'string') return formatMonologueText(parsed.monologue.trim());
     const match = raw.match(/"monologue"\s*:\s*"([\s\S]*?)"\s*[},]/);
-    if (match) return match[1].replace(/\\"/g, '"').trim();
+    if (match) return formatMonologueText(match[1].replace(/\\"/g, '"').trim());
     // Drop any trailing embedded fields like shortImagePrompt if they leaked into the monologue string
     const cutIdx = raw.indexOf('"shortImagePrompt"');
     const cleanedRaw = cutIdx !== -1 ? raw.slice(0, cutIdx) : raw;
-    return cleanedRaw.replace(/```json/gi, '').replace(/```/g, '').replace(/^{/, '').replace(/}$/, '').trim();
+    return formatMonologueText(cleanedRaw.replace(/```json/gi, '').replace(/```/g, '').replace(/^{/, '').replace(/}$/, '').trim());
   };
 
   const cleanDishTitle = (raw: string) => {
@@ -582,7 +603,7 @@ export default function ChoppedGame() {
                   <ChefHat className="text-amber-400" size={18} />
                 </div>
                 <h3 className="text-xl font-semibold text-amber-300">{dish.title}</h3>
-                <p className="text-sm text-gray-300 leading-relaxed max-h-40 overflow-y-auto">{dish.description}</p>
+                <p className="text-sm text-gray-300 leading-relaxed max-h-40 overflow-y-auto whitespace-pre-wrap">{dish.description}</p>
                 {dish.imageUrl && (
                   <button
                     onClick={() => openLightbox(dish.imageUrl, dish.title, winner?.name)}
