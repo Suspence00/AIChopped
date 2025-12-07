@@ -75,7 +75,7 @@ export function ChefCard({ chef, dish, status, onEliminate, isStreaming, streamC
                 )}
 
                 {/* Image Area */}
-                <div className="relative w-full aspect-[4/3] bg-black rounded-lg overflow-hidden border border-gray-800">
+                    <div className="relative w-full aspect-[4/3] bg-black rounded-lg overflow-hidden border border-gray-800">
                     {dish?.imageUrl ? (
                         <button
                             onClick={() => onImageClick?.(dish.imageUrl)}

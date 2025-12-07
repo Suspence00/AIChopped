@@ -94,9 +94,9 @@ export default function IngredientSelect({ value, onChange, options, placeholder
                         {filtered.length === 0 ? (
                             <div className="p-3 text-center text-gray-500 text-sm">No matches found</div>
                         ) : (
-                            filtered.map(opt => (
+                            filtered.map((opt, idx) => (
                                 <button
-                                    key={opt.value} // Value is unique name
+                                    key={`${opt.value}-${idx}`} // Prevent duplicate key warnings if data contains repeats
                                     onClick={() => handleSelect(opt.value)}
                                     className={`
                                        w-full text-left px-3 py-2 rounded text-sm flex items-center justify-between

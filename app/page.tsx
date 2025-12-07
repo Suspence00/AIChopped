@@ -13,9 +13,9 @@ import { DEFAULT_MODELS, FORCED_IMAGE_MODELS, DEFAULT_IMAGE_MODELS, AVAILABLE_IM
 // --- Configuration ---
 // Models are now dynamic, but we keep the initial structure.
 const INITIAL_CHEFS: Chef[] = [
-  { id: 'openai', name: 'Chef GPT', modelId: DEFAULT_MODELS.openai, imageModelId: FORCED_IMAGE_MODELS.openai, color: 'bg-green-600' },
   { id: 'anthropic', name: 'Chef Claude', modelId: DEFAULT_MODELS.anthropic, imageModelId: FORCED_IMAGE_MODELS.anthropic, color: 'bg-orange-600' },
   { id: 'google', name: 'Chef Gemini', modelId: DEFAULT_MODELS.google, imageModelId: FORCED_IMAGE_MODELS.google, color: 'bg-blue-600' },
+  { id: 'openai', name: 'Chef GPT', modelId: DEFAULT_MODELS.openai, imageModelId: FORCED_IMAGE_MODELS.openai, color: 'bg-green-600' },
   { id: 'xai', name: 'Chef Grok', modelId: DEFAULT_MODELS.xai, imageModelId: FORCED_IMAGE_MODELS.xai, color: 'bg-gray-600' },
 ];
 // Image generation is locked to Gemini 2.5 image models (Nano Banana or preview variant) per provider to keep turnaround times low.
@@ -152,47 +152,71 @@ export default function ChoppedGame() {
     return config;
   };
 
-  const normalizeDishData = (payload: any) => {
-    const tryParseString = (raw: string) => {
-      if (typeof raw !== 'string') return null;
-      const cleaned = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
-      try {
-        return JSON.parse(cleaned);
-      } catch {
-        const match = cleaned.match(/{[\s\S]*}/);
-        if (match) {
-          try {
-            return JSON.parse(match[0]);
-          } catch { }
-        }
+  const tryParseJsonString = (raw: string) => {
+    if (typeof raw !== 'string') return null;
+    const cleaned = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
+    try {
+      return JSON.parse(cleaned);
+    } catch {
+      const match = cleaned.match(/{[\s\S]*}/);
+      if (match) {
+        try {
+          return JSON.parse(match[0]);
+        } catch { }
       }
-      return null;
-    };
+    }
+    return null;
+  };
 
+  const cleanMonologue = (raw: string) => {
+    if (!raw) return raw;
+    const parsed = tryParseJsonString(raw);
+    if (parsed?.monologue && typeof parsed.monologue === 'string') return parsed.monologue.trim();
+    const match = raw.match(/"monologue"\s*:\s*"([\s\S]*?)"\s*[},]/);
+    if (match) return match[1].replace(/\\"/g, '"').trim();
+    // Drop any trailing embedded fields like shortImagePrompt if they leaked into the monologue string
+    const cutIdx = raw.indexOf('"shortImagePrompt"');
+    const cleanedRaw = cutIdx !== -1 ? raw.slice(0, cutIdx) : raw;
+    return cleanedRaw.replace(/```json/gi, '').replace(/```/g, '').replace(/^{/, '').replace(/}$/, '').trim();
+  };
+
+  const cleanDishTitle = (raw: string) => {
+    if (!raw) return raw;
+    const parsed = tryParseJsonString(raw);
+    if (parsed?.dishTitle && typeof parsed.dishTitle === 'string') return parsed.dishTitle.trim();
+    const match = raw.match(/"dishTitle"\s*:\s*"([\s\S]*?)"\s*[},]/);
+    if (match) return match[1].replace(/\\"/g, '"').trim();
+    return raw.replace(/```json/gi, '').replace(/```/g, '').replace(/^{/, '').replace(/}$/, '').trim();
+  };
+
+  const normalizeDishData = (payload: any) => {
     if (!payload) {
       return null;
     }
 
     // If the payload itself is a JSON string
     if (typeof payload === 'string') {
-      const parsed = tryParseString(payload);
+      const parsed = tryParseJsonString(payload);
       if (parsed) return parsed;
       return {
         dishTitle: 'Chef Special',
-        monologue: payload,
+        monologue: cleanMonologue(payload),
         shortImagePrompt: 'A beautifully plated dish.'
       };
     }
 
     // If monologue accidentally contains JSON, try to parse and merge
     if (typeof payload.monologue === 'string') {
-      const parsed = tryParseString(payload.monologue);
+      const parsed = tryParseJsonString(payload.monologue);
       if (parsed && (parsed.monologue || parsed.dishTitle)) {
         payload = { ...parsed, ...payload, dishTitle: parsed.dishTitle || payload.dishTitle, monologue: parsed.monologue || payload.monologue, shortImagePrompt: parsed.shortImagePrompt || payload.shortImagePrompt };
       } else {
-        // Strip common JSON markers for display
-        payload.monologue = payload.monologue.replace(/```json/gi, '').replace(/```/g, '').trim();
+        payload.monologue = cleanMonologue(payload.monologue);
       }
+    }
+
+    if (typeof payload.dishTitle === 'string') {
+      payload.dishTitle = cleanDishTitle(payload.dishTitle);
     }
 
     return payload;
@@ -548,11 +572,11 @@ export default function ChoppedGame() {
           </div>
         </div>
 
-        <div className="w-full max-w-6xl">
+        <div className="w-full max-w-5xl">
           <h2 className="text-3xl font-bold mb-6 text-center">Winning Menu</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 gap-6">
             {winnerDishes.map(dish => (
-              <div key={`${dish.roundNumber}-${dish.title}`} className="bg-gray-900/70 border border-amber-700/40 rounded-2xl p-4 flex flex-col gap-3">
+              <div key={`${dish.roundNumber}-${dish.title}`} className="bg-gray-900/70 border border-amber-700/40 rounded-2xl p-4 flex flex-col gap-4">
                 <div className="flex items-center justify-between">
                   <span className="text-xs uppercase text-gray-400">Round {dish.roundNumber}</span>
                   <ChefHat className="text-amber-400" size={18} />
@@ -564,7 +588,7 @@ export default function ChoppedGame() {
                     onClick={() => openLightbox(dish.imageUrl, dish.title, winner?.name)}
                     className="w-full rounded-xl overflow-hidden border border-gray-800 cursor-zoom-in group"
                   >
-                    <img src={dish.imageUrl} alt={dish.title} className="w-full h-48 object-cover group-hover:scale-105 transition-transform duration-500" />
+                    <img src={dish.imageUrl} alt={dish.title} className="w-full h-64 object-cover group-hover:scale-105 transition-transform duration-500" />
                   </button>
                 )}
               </div>
@@ -578,6 +602,26 @@ export default function ChoppedGame() {
         >
           Start New Competition
         </button>
+        {lightboxImage && (
+          <div
+            className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-6"
+            onClick={closeLightbox}
+          >
+            <div className="relative max-w-4xl w-full" onClick={e => e.stopPropagation()}>
+              <img src={lightboxImage.src} alt={lightboxImage.title || 'Dish image'} className="w-full h-auto rounded-xl border border-gray-800 shadow-2xl" />
+              <div className="mt-3 text-center text-sm text-gray-300">
+                <p className="font-semibold">{lightboxImage.title || 'Dish image'}</p>
+                {lightboxImage.chef && <p className="text-gray-400">by {lightboxImage.chef}</p>}
+              </div>
+              <button
+                onClick={closeLightbox}
+                className="absolute top-3 right-3 px-3 py-1 bg-gray-900/80 text-white text-xs rounded-full border border-gray-700 hover:bg-gray-800"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
