@@ -362,8 +362,11 @@ export default function ChoppedGame() {
 
         const rawData = await res.json();
         const data = normalizeIntroData(rawData);
-        const nextAvatar = disableImageGen ? undefined : (data.imageUrl || c.avatarUrl);
-        setChefs(prev => prev.map(c => c.id === id ? { ...c, name: data.name || c.name, bio: data.bio || c.bio, avatarUrl: nextAvatar } : c));
+        setChefs(prev => prev.map(c => {
+          if (c.id !== id) return c;
+          const nextAvatar = disableImageGen ? undefined : (data.imageUrl || c.avatarUrl);
+          return { ...c, name: data.name || c.name, bio: data.bio || c.bio, avatarUrl: nextAvatar };
+        }));
         statusMap[id] = 'done';
         setChefIntroStatus(prev => ({ ...prev, [id]: 'done' }));
       } catch (e) {
