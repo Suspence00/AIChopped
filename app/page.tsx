@@ -287,6 +287,11 @@ export default function ChoppedGame() {
   };
 
   const normalizeIntroData = (payload: any) => {
+    if (typeof payload === 'string') {
+      const parsed = tryParseJsonString(payload);
+      if (parsed) return normalizeIntroData(parsed);
+    }
+
     const result = { ...payload };
 
     const tryParseBio = (bioVal: any) => {
@@ -309,6 +314,16 @@ export default function ChoppedGame() {
     }
     if ('name' in result && typeof result.name === 'string') {
       result.name = result.name.replace(/["']/g, '').trim() || result.name;
+    }
+
+    if (typeof result.bio === 'string' && result.bio.includes('"bio"')) {
+      const bioMatch = result.bio.match(/"bio"\s*:\s*"([^"]*)"/i);
+      if (bioMatch?.[1]) result.bio = bioMatch[1];
+    }
+
+    if (typeof result.name === 'string' && result.name.includes('"name"')) {
+      const nameMatch = result.name.match(/"name"\s*:\s*"([^"]*)"/i);
+      if (nameMatch?.[1]) result.name = nameMatch[1];
     }
 
     return result;
@@ -379,6 +394,70 @@ export default function ChoppedGame() {
     const allSettled = Object.values(statusMap).every(s => s !== 'pending');
     setChefIntrosReady(allSettled);
     setGeneratingChefs(false);
+  };
+
+  const retryChefIntro = async (id: ChefProvider) => {
+    if (demoMode) {
+      const demoChef = demoChefs.find(c => c.id === id);
+      if (demoChef) {
+        const updatedDemo = disableImageGen ? { ...demoChef, avatarUrl: undefined } : demoChef;
+        setChefs(prev => prev.map(c => c.id === id ? { ...c, ...updatedDemo } : c));
+        setChefIntroStatus(prev => ({ ...prev, [id]: 'done' }));
+        setChefIntrosReady(true);
+      }
+      return;
+    }
+
+    const apiKey = gatewayKey.trim();
+    if (!apiKey) {
+      setCreditsState({ status: 'missing', error: 'Add your AI Gateway key in Settings.' });
+      return;
+    }
+
+    setGeneratingChefs(true);
+    setChefIntroStatus(prev => ({ ...prev, [id]: 'pending' }));
+
+    try {
+      const chefConfig = getChefConfig(id);
+      const res = await fetch('/api/chef-intro', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({ chef: chefConfig, disableImages: disableImageGen })
+      });
+
+      if (!res.ok) {
+        const err = await res.text();
+        throw new Error(err || 'Unable to introduce chef');
+      }
+
+      const rawData = await res.json();
+      const data = normalizeIntroData(rawData);
+      setChefs(prev => prev.map(c => {
+        if (c.id !== id) return c;
+        const nextAvatar = disableImageGen ? undefined : (data.imageUrl || c.avatarUrl);
+        return { ...c, name: data.name || c.name, bio: data.bio || c.bio, avatarUrl: nextAvatar };
+      }));
+
+      setChefIntroStatus(prev => {
+        const next = { ...prev, [id]: 'done' as const };
+        const allSettled = gameState.contestants.every(cid => next[cid] && next[cid] !== 'pending');
+        setChefIntrosReady(allSettled);
+        return next;
+      });
+    } catch (e) {
+      console.error(`Intro retry for ${id} failed`, e);
+      setChefIntroStatus(prev => {
+        const next = { ...prev, [id]: 'error' as const };
+        const allSettled = gameState.contestants.every(cid => next[cid] && next[cid] !== 'pending');
+        setChefIntrosReady(allSettled);
+        return next;
+      });
+    } finally {
+      setGeneratingChefs(false);
+    }
   };
 
   const startRound = async () => {
@@ -987,7 +1066,18 @@ export default function ChoppedGame() {
                           <p className="font-semibold text-white text-xl">{chef.name}</p>
                           <p className="text-[13px] text-gray-400 uppercase tracking-wide">{chef.modelId}</p>
                           {chef.bio && <p className="text-base text-gray-200 mt-3 leading-relaxed">{chef.bio}</p>}
-                          <span className={`text-[12px] ${statusColor}`}>{statusText}</span>
+                          <div className="flex items-center gap-3 mt-2">
+                            <span className={`text-[12px] ${statusColor}`}>{statusText}</span>
+                            {status === 'error' && (
+                              <button
+                                onClick={() => retryChefIntro(chef.id)}
+                                disabled={generatingChefs}
+                                className="px-3 py-1 text-[11px] font-semibold rounded bg-red-900/40 border border-red-700 text-red-100 hover:bg-red-800 disabled:opacity-60"
+                              >
+                                Retry
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
                     );
