@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import type React from 'react';
 import { Chef, Dish, RoundState, ChefProvider } from '@/lib/types';
 import { ChefCard } from '@/components/ChefCard';
 import SettingsModal from '@/components/SettingsModal';
@@ -50,6 +51,7 @@ export default function ChoppedGame() {
   const [currentChefIndex, setCurrentChefIndex] = useState(0);
   const [hasChoppedThisRound, setHasChoppedThisRound] = useState(false);
   const [demoMode, setDemoMode] = useState(false);
+  const touchStartX = useRef<number | null>(null);
 
   const isCreditLocked = creditsState.status !== 'valid';
   const gameplayLocked = !demoMode && isCreditLocked;
@@ -701,6 +703,23 @@ export default function ChoppedGame() {
   const ingredientOptions = mounted ? getIngredients(currentRoundType, showDetails) : [];
   const activeChefs = gameState.contestants.map(id => getChefConfig(id));
   const canStartRound = !generatingChefs && hasGeneratedChefs && basket.filter(i => i.trim()).length === 4;
+  const swipeThreshold = 50;
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0]?.clientX ?? null;
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX.current === null || activeChefs.length <= 1) return;
+    const deltaX = (e.changedTouches[0]?.clientX ?? 0) - touchStartX.current;
+    touchStartX.current = null;
+    if (Math.abs(deltaX) < swipeThreshold) return;
+    if (deltaX < 0) {
+      setCurrentChefIndex(prev => Math.min(activeChefs.length - 1, prev + 1));
+    } else {
+      setCurrentChefIndex(prev => Math.max(0, prev - 1));
+    }
+  };
 
   useEffect(() => {
     if (currentChefIndex > activeChefs.length - 1) {
@@ -1079,7 +1098,11 @@ export default function ChoppedGame() {
               </div>
 
               {activeChefs.length > 0 && (
-                <div className="relative max-w-3xl mx-auto">
+                <div
+                  className="relative max-w-3xl mx-auto"
+                  onTouchStart={handleTouchStart}
+                  onTouchEnd={handleTouchEnd}
+                >
                   {(() => {
                     const chef = activeChefs[currentChefIndex];
                     const dish = gameState.dishes[chef.id];
