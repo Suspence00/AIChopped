@@ -13,9 +13,10 @@ interface ChefCardProps {
     onImageClick?: (src?: string) => void;
     onAvatarClick?: (src?: string) => void;
     chopLocked?: boolean;
+    imageDisabled?: boolean;
 }
 
-export function ChefCard({ chef, dish, status, onEliminate, isStreaming, streamContent, onImageClick, onAvatarClick, chopLocked = false }: ChefCardProps) {
+export function ChefCard({ chef, dish, status, onEliminate, isStreaming, streamContent, onImageClick, onAvatarClick, chopLocked = false, imageDisabled = false }: ChefCardProps) {
     const isEliminated = status === 'eliminated';
     const isLoading = status === 'working';
     const canChop = status === 'done' && !chopLocked;
@@ -96,8 +97,14 @@ export function ChefCard({ chef, dish, status, onEliminate, isStreaming, streamC
                             </div>
                         </button>
                     ) : (
-                        <div className="w-full h-full flex items-center justify-center text-gray-700 bg-gray-950">
-                            {isLoading ? <Loader2 className="animate-spin opacity-20" size={48} /> : <Utensils className="opacity-10" size={48} />}
+                        <div className="w-full h-full flex items-center justify-center text-gray-700 bg-gray-950 px-3 text-center">
+                            {imageDisabled ? (
+                                <span className="text-xs text-gray-500">Image generation disabled</span>
+                            ) : isLoading ? (
+                                <Loader2 className="animate-spin opacity-20" size={48} />
+                            ) : (
+                                <Utensils className="opacity-10" size={48} />
+                            )}
                         </div>
                     )}
                 </div>

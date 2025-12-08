@@ -7,7 +7,7 @@ import { ChefCard } from '@/components/ChefCard';
 import SettingsModal from '@/components/SettingsModal';
 import IngredientSelect from '@/components/IngredientSelect';
 import { getIngredients, getRandomBasket, RoundType } from '@/lib/ingredients';
-import { RefreshCw, Trophy, UtensilsCrossed, ArrowRight, ChefHat, Dices, Lock, UserPlus, ShieldCheck, AlertCircle } from 'lucide-react';
+import { RefreshCw, Trophy, UtensilsCrossed, ArrowRight, ChefHat, Dices, Lock, UserPlus, AlertCircle } from 'lucide-react';
 
 import { DEFAULT_MODELS, FORCED_IMAGE_MODELS, DEFAULT_IMAGE_MODELS, AVAILABLE_IMAGE_MODELS } from '@/lib/models';
 import { demoChefs, demoBaskets, demoDishes, demoIntroStatus } from '@/lib/demoData';
@@ -35,6 +35,7 @@ export default function ChoppedGame() {
   const [mounted, setMounted] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const [usePersonas, setUsePersonas] = useState(false);
+  const [disableImageGen, setDisableImageGen] = useState(false);
   const [chefs, setChefs] = useState<Chef[]>(INITIAL_CHEFS);
   const [dishHistory, setDishHistory] = useState<Record<ChefProvider, Dish[]>>({
     openai: [],
@@ -138,6 +139,9 @@ export default function ChoppedGame() {
     const storedPersonas = localStorage.getItem('CEF_PERSONAS_ENABLED');
     if (storedPersonas) setUsePersonas(JSON.parse(storedPersonas));
 
+    const storedDisableImages = localStorage.getItem('CHOPPED_DISABLE_IMAGE_GEN');
+    if (storedDisableImages) setDisableImageGen(JSON.parse(storedDisableImages));
+
   }, []);
 
   const [gameState, setGameState] = useState<RoundState>({
@@ -152,9 +156,10 @@ export default function ChoppedGame() {
   const [loadingStates, setLoadingStates] = useState<Record<string, 'idle' | 'text' | 'image' | 'done' | 'error'>>({});
 
   const enterDemoMode = () => {
+    const demoChefsToUse = disableImageGen ? demoChefs.map(c => ({ ...c, avatarUrl: undefined })) : demoChefs;
     setDemoMode(true);
     setCreditsState({ status: 'valid', balance: Infinity });
-    setChefs(demoChefs);
+    setChefs(demoChefsToUse);
     setBasket(demoBaskets[0]);
     setHasGeneratedChefs(true);
     setChefIntrosReady(true);
@@ -168,7 +173,7 @@ export default function ChoppedGame() {
       ingredients: [],
       dishes: { openai: undefined, anthropic: undefined, google: undefined, xai: undefined },
       eliminated: [],
-      contestants: demoChefs.map(c => c.id)
+      contestants: demoChefsToUse.map(c => c.id)
     });
   };
 
@@ -347,7 +352,7 @@ export default function ChoppedGame() {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${apiKey}`
           },
-          body: JSON.stringify({ chef: chefConfig })
+          body: JSON.stringify({ chef: chefConfig, disableImages: disableImageGen })
         });
 
         if (!res.ok) {
@@ -357,7 +362,8 @@ export default function ChoppedGame() {
 
         const rawData = await res.json();
         const data = normalizeIntroData(rawData);
-        setChefs(prev => prev.map(c => c.id === id ? { ...c, name: data.name || c.name, bio: data.bio || c.bio, avatarUrl: data.imageUrl || c.avatarUrl } : c));
+        const nextAvatar = disableImageGen ? undefined : (data.imageUrl || c.avatarUrl);
+        setChefs(prev => prev.map(c => c.id === id ? { ...c, name: data.name || c.name, bio: data.bio || c.bio, avatarUrl: nextAvatar } : c));
         statusMap[id] = 'done';
         setChefIntroStatus(prev => ({ ...prev, [id]: 'done' }));
       } catch (e) {
@@ -507,6 +513,18 @@ export default function ChoppedGame() {
           [chef.id]: baseDish
         }
       }));
+
+      if (disableImageGen) {
+        const finalDish: Dish = { ...baseDish, imageUrl: undefined };
+        setLoadingStates(prev => ({ ...prev, [chef.id]: 'done' }));
+        setDishHistory(prev => {
+          const existing = prev[chef.id] || [];
+          const filtered = existing.filter(d => d.roundNumber !== roundNum);
+          return { ...prev, [chef.id]: [...filtered, finalDish] };
+        });
+        return;
+      }
+
       setLoadingStates(prev => ({ ...prev, [chef.id]: 'image' }));
 
       // 2. Generate Image (best-effort, fall back gracefully)
@@ -594,6 +612,8 @@ export default function ChoppedGame() {
       imageUrl: undefined
     };
 
+    const finalDish: Dish = { ...baseDish, imageUrl: disableImageGen ? undefined : textData.imageUrl };
+
     // Simulate async steps
     setTimeout(() => {
       setGameState(prev => ({
@@ -603,9 +623,18 @@ export default function ChoppedGame() {
           [chef.id]: baseDish
         }
       }));
-      setLoadingStates(prev => ({ ...prev, [chef.id]: 'image' }));
 
-      const finalDish: Dish = { ...baseDish, imageUrl: textData.imageUrl };
+      if (disableImageGen) {
+        setLoadingStates(prev => ({ ...prev, [chef.id]: 'done' }));
+        setDishHistory(prev => {
+          const existing = prev[chef.id] || [];
+          const filtered = existing.filter(d => d.roundNumber !== roundNum);
+          return { ...prev, [chef.id]: [...filtered, finalDish] };
+        });
+        return;
+      }
+
+      setLoadingStates(prev => ({ ...prev, [chef.id]: 'image' }));
       setTimeout(() => {
         setGameState(prev => ({
           ...prev,
@@ -903,16 +932,9 @@ export default function ChoppedGame() {
                 </div>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => validateCredits()}
-                disabled={creditsState.status === 'checking'}
-                className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-sm font-semibold flex items-center gap-2 disabled:opacity-50"
-              >
-                {creditsState.status === 'checking' ? <RefreshCw size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
-                {creditsState.status === 'checking' ? 'Checking...' : 'Validate Balance'}
-              </button>
-              <span className="text-sm text-gray-300">Use Settings to update your API key.</span>
+            <div className="flex flex-col items-start md:items-end gap-1 text-sm text-gray-300">
+              <span>Open Settings, paste your key, then hit <span className="font-semibold text-white">Save & Reload</span> to validate automatically.</span>
+              <span className="text-xs text-gray-500">Need a quick check first? Use the Check Balance button inside Settings.</span>
             </div>
           </div>
         )}
@@ -1123,6 +1145,7 @@ export default function ChoppedGame() {
                         onImageClick={(src?: string) => openLightbox(src, dish?.title, chef.name)}
                         onAvatarClick={(src?: string) => openLightbox(src, `${chef.name} portrait`, chef.name)}
                         chopLocked={hasChoppedThisRound}
+                        imageDisabled={disableImageGen}
                       />
                     );
                   })()}

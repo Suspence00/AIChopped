@@ -30,12 +30,12 @@ export async function POST(req: Request) {
         }
 
         const body = await req.json();
-        const parsed = z.object({ chef: chefSchema }).safeParse(body);
+        const parsed = z.object({ chef: chefSchema, disableImages: z.boolean().optional() }).safeParse(body);
         if (!parsed.success) {
             return new Response("Invalid payload", { status: 400 });
         }
 
-        const chef = parsed.data.chef;
+        const { chef, disableImages } = parsed.data;
         if (!isModelAllowed(chef.id, chef.modelId, AVAILABLE_MODELS)) {
             return new Response("Model not allowed for provider", { status: 400 });
         }
@@ -67,33 +67,35 @@ Output JSON with keys: name, bio. No markdown, no code fences.`,
         const portraitPrompt = `Cinematic portrait of a chef named ${finalName}, ${finalBio}. Photorealistic, professional studio lighting, head and shoulders, confident smile, wearing a chef coat.`;
 
         let avatarUrl: string | undefined;
-        try {
-            const result: any = await generateText({
-                model: gateway(portraitModelId),
-                prompt: portraitPrompt,
-            });
-
-            const collectedFiles: any[] = [];
-            if (result?.files?.length) collectedFiles.push(...result.files);
-            if (result?.steps?.length) {
-                result.steps.forEach((step: any) => {
-                    if (step?.files?.length) collectedFiles.push(...step.files);
+        if (!disableImages) {
+            try {
+                const result: any = await generateText({
+                    model: gateway(portraitModelId),
+                    prompt: portraitPrompt,
                 });
-            }
-            const resolvedFiles = (result as any)?.resolvedOutput?.files;
-            if (resolvedFiles?.length) collectedFiles.push(...resolvedFiles);
 
-            if (collectedFiles.length) {
-                const imageFile = collectedFiles[0];
-                if (imageFile.base64) avatarUrl = `data:image/png;base64,${imageFile.base64}`;
-                else if (imageFile.data) avatarUrl = `data:image/png;base64,${imageFile.data}`;
-                else if (imageFile.url) avatarUrl = imageFile.url;
-                else if (imageFile.uint8Array) {
-                    avatarUrl = `data:image/png;base64,${Buffer.from(imageFile.uint8Array).toString('base64')}`;
+                const collectedFiles: any[] = [];
+                if (result?.files?.length) collectedFiles.push(...result.files);
+                if (result?.steps?.length) {
+                    result.steps.forEach((step: any) => {
+                        if (step?.files?.length) collectedFiles.push(...step.files);
+                    });
                 }
+                const resolvedFiles = (result as any)?.resolvedOutput?.files;
+                if (resolvedFiles?.length) collectedFiles.push(...resolvedFiles);
+
+                if (collectedFiles.length) {
+                    const imageFile = collectedFiles[0];
+                    if (imageFile.base64) avatarUrl = `data:image/png;base64,${imageFile.base64}`;
+                    else if (imageFile.data) avatarUrl = `data:image/png;base64,${imageFile.data}`;
+                    else if (imageFile.url) avatarUrl = imageFile.url;
+                    else if (imageFile.uint8Array) {
+                        avatarUrl = `data:image/png;base64,${Buffer.from(imageFile.uint8Array).toString('base64')}`;
+                    }
+                }
+            } catch (err) {
+                console.error("Portrait generation failed:", err);
             }
-        } catch (err) {
-            console.error("Portrait generation failed:", err);
         }
 
         return Response.json({

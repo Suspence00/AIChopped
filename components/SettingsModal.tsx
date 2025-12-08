@@ -59,7 +59,7 @@ function Button({ onClick, children, className, disabled }: any) {
 }
 
 // Modal content component
-function ModalContent({ onClose, keyValue, setKey, models, handleModelChange, imageModels, handleImageModelChange, saveSettings, checkCredits, checkingCredits, creditInfo, showDetails, setShowDetails, usePersonas, setUsePersonas }: any) {
+function ModalContent({ onClose, keyValue, setKey, models, handleModelChange, imageModels, handleImageModelChange, saveSettings, checkCredits, checkingCredits, creditInfo, showDetails, setShowDetails, usePersonas, setUsePersonas, disableImageGen, setDisableImageGen }: any) {
     return (
         <div
             className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-md"
@@ -212,6 +212,15 @@ function ModalContent({ onClose, keyValue, setKey, models, handleModelChange, im
                         />
                         Show extra detail for ingredients (Season/Episode)
                     </label>
+                    <label className="flex items-center gap-2 text-xs text-gray-300 cursor-pointer">
+                        <input
+                            type="checkbox"
+                            checked={disableImageGen}
+                            onChange={(e: any) => setDisableImageGen(e.target.checked)}
+                            className="rounded bg-gray-700 border-gray-600 text-amber-600 focus:ring-amber-500"
+                        />
+                        Disable image generation (chef portraits and dishes)
+                    </label>
                 </div>
 
                 {/* Footer */}
@@ -241,6 +250,7 @@ export default function SettingsModal({ gatewayKey, onKeyChange }: SettingsModal
     const [checkingCredits, setCheckingCredits] = useState(false);
     const [creditInfo, setCreditInfo] = useState<{ balance?: string, total_used?: string, error?: string } | null>(null);
     const [mounted, setMounted] = useState(false);
+    const [disableImageGen, setDisableImageGen] = useState(false);
 
     useEffect(() => {
         setMounted(true);
@@ -269,6 +279,9 @@ export default function SettingsModal({ gatewayKey, onKeyChange }: SettingsModal
 
         const storedPersonas = localStorage.getItem('CEF_PERSONAS_ENABLED');
         if (storedPersonas) setUsePersonas(JSON.parse(storedPersonas));
+
+        const storedImageToggle = localStorage.getItem('CHOPPED_DISABLE_IMAGE_GEN');
+        if (storedImageToggle) setDisableImageGen(JSON.parse(storedImageToggle));
     }, [gatewayKey]);
 
     const saveSettings = () => {
@@ -283,6 +296,7 @@ export default function SettingsModal({ gatewayKey, onKeyChange }: SettingsModal
             localStorage.setItem('CHOPPED_SHOW_DETAILS', JSON.stringify(showDetails));
         }
         localStorage.setItem('CEF_PERSONAS_ENABLED', JSON.stringify(usePersonas));
+        localStorage.setItem('CHOPPED_DISABLE_IMAGE_GEN', JSON.stringify(disableImageGen));
         setOpen(false);
         window.location.reload();
     };
@@ -344,6 +358,8 @@ export default function SettingsModal({ gatewayKey, onKeyChange }: SettingsModal
                     setShowDetails={setShowDetails}
                     usePersonas={usePersonas}
                     setUsePersonas={setUsePersonas}
+                    disableImageGen={disableImageGen}
+                    setDisableImageGen={setDisableImageGen}
                 />,
                 document.body
             )}
