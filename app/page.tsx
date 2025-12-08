@@ -1117,6 +1117,28 @@ export default function ChoppedGame() {
           </div>
         )}
       </main>
+      <footer className="container mx-auto px-4 pb-8 text-center text-[11px] text-gray-500">
+        <div className="flex flex-col items-center gap-1">
+          <a
+            href="https://www.flaticon.com/free-icons/robot"
+            title="Robot icons"
+            className="hover:text-gray-300 underline decoration-dotted decoration-gray-600"
+            target="_blank"
+            rel="noreferrer noopener"
+          >
+            Robot icons created by gravisio - Flaticon
+          </a>
+          <a
+            href="https://github.com/Suspence00"
+            className="hover:text-gray-300 underline decoration-dotted decoration-gray-600"
+            target="_blank"
+            rel="noreferrer noopener"
+            aria-label="Creator profile"
+          >
+            Made by @Suspence0
+          </a>
+        </div>
+      </footer>
     </div>
   );
 }
