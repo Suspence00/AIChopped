@@ -424,6 +424,10 @@ export default function ChoppedGame() {
   };
 
   const handleBasketChange = (index: number, val: string) => {
+    if (demoMode) {
+      alert("Ingredients can't change in the demo — it follows a set storyline.");
+      return;
+    }
     const newBasket = [...basket];
     newBasket[index] = val;
     setBasket(newBasket);
@@ -432,8 +436,7 @@ export default function ChoppedGame() {
   const randomizeBasket = () => {
     if (gameplayLocked || !hasGeneratedChefs) return;
     if (demoMode) {
-      const rIndex = gameState.roundNumber % demoBaskets.length;
-      setBasket(demoBaskets[rIndex]);
+      alert("Ingredients can't change in the demo — it follows a set storyline.");
       return;
     }
 
@@ -853,6 +856,18 @@ export default function ChoppedGame() {
           </div>
         )}
 
+        {gameState.status === 'idle' && (
+          <section className="mb-6 p-4 md:p-6 border border-gray-800 rounded-2xl bg-gray-900/60 text-left">
+            <h2 className="text-lg font-semibold text-white mb-2">How the competition works</h2>
+            <ul className="text-sm text-gray-300 space-y-1 list-disc list-inside">
+              <li>Generate the chefs to get their names, bios, and portraits.</li>
+              <li>Select four mystery ingredients for each round (Appetizer, Entree, Dessert).</li>
+              <li>Chefs cook in parallel; you judge, chop one per round, and crown a winner.</li>
+              <li>Demo mode uses a fixed storyline: ingredients and eliminations are pre-scripted.</li>
+            </ul>
+          </section>
+        )}
+
         {creditsState.status !== 'valid' && (
           <div className="mb-6 p-4 border border-gray-800 rounded-xl bg-gray-900/50 flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
             <div className="flex items-start gap-3">
@@ -963,13 +978,18 @@ export default function ChoppedGame() {
                       <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest">Basket Items</h3>
                       <button
                         onClick={randomizeBasket}
-                        disabled={generatingChefs}
+                        disabled={generatingChefs || demoMode}
                         className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold text-black bg-amber-400 hover:bg-amber-300 transition-all uppercase disabled:opacity-50 shadow"
                       >
                         <Dices size={16} />
                         Randomize Basket
                       </button>
                     </div>
+                      {demoMode && (
+                        <div className="mb-4 text-xs text-amber-200 bg-amber-900/20 border border-amber-700/40 rounded-lg px-3 py-2">
+                          Ingredients can't change in the demo — it follows a set storyline.
+                        </div>
+                      )}
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                         <IngredientSelect
@@ -977,24 +997,28 @@ export default function ChoppedGame() {
                           onChange={v => handleBasketChange(0, v)}
                           options={ingredientOptions}
                           placeholder="Item 1"
+                          disabled={demoMode}
                         />
                         <IngredientSelect
                           value={basket[1]}
                           onChange={v => handleBasketChange(1, v)}
                           options={ingredientOptions}
                           placeholder="Item 2"
+                          disabled={demoMode}
                         />
                         <IngredientSelect
                           value={basket[2]}
                           onChange={v => handleBasketChange(2, v)}
                           options={ingredientOptions}
                           placeholder="Item 3"
+                          disabled={demoMode}
                         />
                         <IngredientSelect
                           value={basket[3]}
                           onChange={v => handleBasketChange(3, v)}
                           options={ingredientOptions}
                           placeholder="Item 4"
+                          disabled={demoMode}
                         />
                       </div>
 
