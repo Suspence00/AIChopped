@@ -1,17 +1,46 @@
 import { generateText } from 'ai';
+import { z } from 'zod';
 import { createGatewayClient } from '@/lib/ai';
+import { AVAILABLE_MODELS } from '@/lib/models';
+import { checkRateLimit, extractBearerToken, getClientId, isModelAllowed } from '@/lib/security';
 
 export const runtime = 'nodejs';
 
+const chefSchema = z.object({
+    id: z.enum(['openai', 'anthropic', 'google', 'xai']),
+    name: z.string().min(1).max(80),
+    modelId: z.string().min(1),
+    imageModelId: z.string().optional(),
+    bio: z.string().max(500).optional(),
+    avatarUrl: z.string().optional(),
+    color: z.string().optional(),
+});
+
 export async function POST(req: Request) {
     try {
-        const { chef, apiKey } = await req.json();
-
-        if (!chef) {
-            return new Response("Missing chef payload", { status: 400 });
+        const clientId = getClientId(req);
+        const rate = checkRateLimit(clientId, 15, 60_000);
+        if (!rate.allowed) {
+            return new Response("Too Many Requests", { status: 429, headers: { 'Retry-After': Math.ceil((rate.resetAt - Date.now()) / 1000).toString() } });
         }
 
-        const gateway = createGatewayClient(apiKey);
+        const token = extractBearerToken(req);
+        if (!token) {
+            return new Response("Missing Authorization header", { status: 401 });
+        }
+
+        const body = await req.json();
+        const parsed = z.object({ chef: chefSchema }).safeParse(body);
+        if (!parsed.success) {
+            return new Response("Invalid payload", { status: 400 });
+        }
+
+        const chef = parsed.data.chef;
+        if (!isModelAllowed(chef.id, chef.modelId, AVAILABLE_MODELS)) {
+            return new Response("Model not allowed for provider", { status: 400 });
+        }
+
+        const gateway = createGatewayClient(token);
 
         const { text } = await generateText({
             model: gateway(chef.modelId),

@@ -1,16 +1,15 @@
 import { createGateway } from '@ai-sdk/gateway';
 
-// This function constructs a client that points to the Vercel AI Gateway using the Gateway provider,
-// which supports image-capable/multimodal models.
+// Construct a Gateway client using an explicitly provided token.
+// We intentionally do not fall back to process.env so that server secrets
+// are never used implicitly by untrusted callers.
 export const createGatewayClient = (apiKey: string) => {
-    const token = apiKey || process.env.AI_GATEWAY_API_KEY;
+    const token = apiKey?.trim();
 
     if (!token) {
-        throw new Error("Missing AI Gateway API Key. Please configure it in Settings.");
+        throw new Error("Missing AI Gateway API Key. Authorization header required.");
     }
 
-    // Use the Gateway provider pointed at Vercel AI Gateway.
-    // The provider expects the /v1/ai base URL (it will append /language-model, etc).
     const gateway = createGateway({
         baseURL: 'https://ai-gateway.vercel.sh/v1/ai',
         apiKey: token,

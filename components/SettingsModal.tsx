@@ -5,6 +5,11 @@ import { createPortal } from 'react-dom';
 import { Settings, Lock, CheckCircle, AlertCircle, RefreshCw, Wallet } from 'lucide-react';
 import { AVAILABLE_MODELS, DEFAULT_MODELS, AVAILABLE_IMAGE_MODELS, DEFAULT_IMAGE_MODELS } from '@/lib/models';
 
+type SettingsModalProps = {
+    gatewayKey: string;
+    onKeyChange: (key: string) => void;
+};
+
 function Input({ value, onChange, placeholder, type = "text", className = "" }: any) {
     return (
         <input
@@ -226,7 +231,7 @@ function ModalContent({ onClose, keyValue, setKey, models, handleModelChange, im
     );
 }
 
-export default function SettingsModal() {
+export default function SettingsModal({ gatewayKey, onKeyChange }: SettingsModalProps) {
     const [open, setOpen] = useState(false);
     const [key, setKey] = useState('');
     const [models, setModels] = useState(DEFAULT_MODELS);
@@ -239,8 +244,7 @@ export default function SettingsModal() {
 
     useEffect(() => {
         setMounted(true);
-        const storedKey = localStorage.getItem('AI_GATEWAY_API_KEY');
-        if (storedKey) setKey(storedKey);
+        setKey(gatewayKey || '');
 
         const storedModels = localStorage.getItem('AI_MODELS_CONFIG');
         if (storedModels) {
@@ -265,10 +269,14 @@ export default function SettingsModal() {
 
         const storedPersonas = localStorage.getItem('CEF_PERSONAS_ENABLED');
         if (storedPersonas) setUsePersonas(JSON.parse(storedPersonas));
-    }, []);
+    }, [gatewayKey]);
 
     const saveSettings = () => {
-        localStorage.setItem('AI_GATEWAY_API_KEY', key);
+        if (typeof window !== 'undefined') {
+            if (key) sessionStorage.setItem('AI_GATEWAY_API_KEY', key);
+            else sessionStorage.removeItem('AI_GATEWAY_API_KEY');
+        }
+        onKeyChange(key);
         localStorage.setItem('AI_MODELS_CONFIG', JSON.stringify(models));
         localStorage.setItem('AI_IMAGE_MODELS_CONFIG', JSON.stringify(imageModels));
         if (showDetails !== null) {

@@ -64,7 +64,7 @@ export function ChefCard({ chef, dish, status, onEliminate, isStreaming, streamC
             {/* Body */}
             <div className="flex-1 p-4 flex flex-col gap-4">
                 {chef.bio && (
-                    <p className="text-xs text-gray-400 italic leading-relaxed">{chef.bio}</p>
+                    <p className="text-md text-gray-200 italic leading-relaxed">{chef.bio}</p>
                 )}
                 {isLoading && !isStreaming ? (
                     <div className="flex flex-col items-center justify-center p-8 text-gray-500 animate-pulse">
@@ -84,7 +84,7 @@ export function ChefCard({ chef, dish, status, onEliminate, isStreaming, streamC
                 )}
 
                 {/* Image Area */}
-                    <div className="relative w-full aspect-[4/3] bg-black rounded-lg overflow-hidden border border-gray-800">
+                <div className="relative w-full aspect-[4/3] bg-black rounded-lg overflow-hidden border border-gray-800">
                     {dish?.imageUrl ? (
                         <button
                             onClick={() => onImageClick?.(dish.imageUrl)}

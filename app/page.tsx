@@ -11,6 +11,10 @@ import { RefreshCw, Trophy, UtensilsCrossed, ArrowRight, ChefHat, Dices, Lock, U
 import { DEFAULT_MODELS, FORCED_IMAGE_MODELS, DEFAULT_IMAGE_MODELS, AVAILABLE_IMAGE_MODELS } from '@/lib/models';
 import { demoChefs, demoBaskets, demoDishes, demoIntroStatus } from '@/lib/demoData';
 
+// --- Types ---
+type CreditsStatus = 'checking' | 'valid' | 'invalid' | 'missing';
+type CreditsState = { status: CreditsStatus; balance?: number; error?: string };
+
 // --- Configuration ---
 // Models are now dynamic, but we keep the initial structure.
 const INITIAL_CHEFS: Chef[] = [
@@ -24,6 +28,7 @@ const INITIAL_CHEFS: Chef[] = [
 export default function ChoppedGame() {
   // --- State ---
   const [basket, setBasket] = useState<string[]>(['', '', '', '']);
+  const [gatewayKey, setGatewayKey] = useState('');
   const [currentModels, setCurrentModels] = useState(DEFAULT_MODELS); // State for models to avoid hydration mismatch
   const [currentImageModels, setCurrentImageModels] = useState(DEFAULT_IMAGE_MODELS);
   const [mounted, setMounted] = useState(false);
@@ -41,7 +46,7 @@ export default function ChoppedGame() {
   const [generatingChefs, setGeneratingChefs] = useState(false);
   const [chefIntroStatus, setChefIntroStatus] = useState<Record<string, 'pending' | 'done' | 'error'>>({});
   const [lightboxImage, setLightboxImage] = useState<{ src: string; title?: string; chef?: string } | null>(null);
-  const [creditsState, setCreditsState] = useState<{ status: 'checking' | 'valid' | 'invalid' | 'missing'; balance?: number; error?: string }>({ status: 'checking' });
+  const [creditsState, setCreditsState] = useState<CreditsState>({ status: 'checking' });
   const [currentChefIndex, setCurrentChefIndex] = useState(0);
   const [hasChoppedThisRound, setHasChoppedThisRound] = useState(false);
   const [demoMode, setDemoMode] = useState(false);
@@ -55,12 +60,13 @@ export default function ChoppedGame() {
       setCreditsState({ status: 'valid', balance: Infinity });
       return;
     }
-    const key = forcedKey || localStorage.getItem('AI_GATEWAY_API_KEY') || '';
+    const key = (forcedKey || gatewayKey || '').trim();
     if (!key) {
       setCreditsState({ status: 'missing', error: 'Add your AI Gateway key in Settings.' });
       return;
     }
 
+    setGatewayKey(key);
     setCreditsState({ status: 'checking' });
 
     try {
@@ -79,7 +85,6 @@ export default function ChoppedGame() {
 
       if (balanceValue > 1) {
         setCreditsState({ status: 'valid', balance: balanceValue });
-        localStorage.setItem('CHOPPED_LAST_BALANCE', JSON.stringify({ balance: balanceValue, ts: Date.now() }));
       } else {
         setCreditsState({ status: 'invalid', balance: balanceValue, error: 'Balance must be above $1 to play.' });
       }
@@ -91,6 +96,17 @@ export default function ChoppedGame() {
   // Load settings on mount
   useEffect(() => {
     setMounted(true);
+    // Recover per-session key if available (we avoid persistent storage for the secret)
+    if (typeof window !== 'undefined') {
+      const storedKey = sessionStorage.getItem('AI_GATEWAY_API_KEY');
+      if (storedKey) {
+        setGatewayKey(storedKey);
+        validateCredits(storedKey);
+      } else {
+        setCreditsState({ status: 'missing', error: 'Add your AI Gateway key in Settings.' });
+      }
+    }
+
     const storedModels = localStorage.getItem('AI_MODELS_CONFIG');
     if (storedModels) {
       try {
@@ -120,15 +136,6 @@ export default function ChoppedGame() {
     const storedPersonas = localStorage.getItem('CEF_PERSONAS_ENABLED');
     if (storedPersonas) setUsePersonas(JSON.parse(storedPersonas));
 
-    const storedKey = localStorage.getItem('AI_GATEWAY_API_KEY');
-    if (!storedKey) {
-      setCreditsState({ status: 'missing', error: 'Add your AI Gateway key in Settings.' });
-    } else {
-      validateCredits(storedKey);
-    }
-
-    // Listen for storage events or custom events if SettingsModal updates localstorage but doesn't window.reload
-    // But SettingsModal currently does window.location.reload() which works fine.
   }, []);
 
   const [gameState, setGameState] = useState<RoundState>({
@@ -317,7 +324,7 @@ export default function ChoppedGame() {
       return;
     }
 
-    const apiKey = localStorage.getItem('AI_GATEWAY_API_KEY') || '';
+    const apiKey = gatewayKey.trim();
     if (!apiKey) {
       setCreditsState({ status: 'missing', error: 'Add your AI Gateway key in Settings.' });
       return;
@@ -334,7 +341,11 @@ export default function ChoppedGame() {
         const chefConfig = getChefConfig(id);
         const res = await fetch('/api/chef-intro', {
           method: 'POST',
-          body: JSON.stringify({ chef: chefConfig, apiKey })
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`
+          },
+          body: JSON.stringify({ chef: chefConfig })
         });
 
         if (!res.ok) {
@@ -444,12 +455,20 @@ export default function ChoppedGame() {
 
   const processChefTurn = async (chef: Chef, ingredients: string[], roundNum: number) => {
     try {
-      const apiKey = localStorage.getItem('AI_GATEWAY_API_KEY') || '';
+      const apiKey = gatewayKey.trim();
+      if (!apiKey) {
+        setCreditsState({ status: 'missing', error: 'Add your AI Gateway key in Settings.' });
+        throw new Error('Missing gateway key');
+      }
 
       // 1. Generate Text
       const textRes = await fetch('/api/chef-turn', {
         method: 'POST',
-        body: JSON.stringify({ chef, ingredients, apiKey, roundNumber: roundNum })
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({ chef, ingredients, roundNumber: roundNum, usePersonas })
       });
 
       if (!textRes.ok) {
@@ -485,27 +504,47 @@ export default function ChoppedGame() {
       }));
       setLoadingStates(prev => ({ ...prev, [chef.id]: 'image' }));
 
-      // 2. Generate Image
-      const imgRes = await fetch('/api/generate-image', {
-        method: 'POST',
-        body: JSON.stringify({
-          chef,
-          prompt: textData.shortImagePrompt || textData.dishTitle,
-          apiKey
-        })
-      });
+      // 2. Generate Image (best-effort, fall back gracefully)
+      let finalImageUrl: string | undefined = undefined;
+      try {
+        const imagePrompt = (textData.shortImagePrompt || textData.dishTitle || 'A beautifully plated dish.').slice(0, 380);
+        const imgRes = await fetch('/api/generate-image', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`
+          },
+          body: JSON.stringify({
+            chef,
+            prompt: imagePrompt
+          })
+        });
 
-      if (!imgRes.ok) throw new Error('Image Gen Failed');
-      const imgData = await imgRes.json(); // Expect { imageUrl: base64 }
+        let imgData: any = null;
+        try {
+          imgData = await imgRes.clone().json();
+        } catch {
+          try {
+            imgData = await imgRes.text();
+          } catch { }
+        }
 
-      const finalImageUrl = (() => {
-        if (!imgData?.imageUrl) return undefined;
-        if (imgData.isUrl) return imgData.imageUrl;
-        if (typeof imgData.imageUrl === 'string' && imgData.imageUrl.startsWith('data:image')) return imgData.imageUrl;
-        return `data:image/png;base64,${imgData.imageUrl}`;
-      })();
+        if (!imgRes.ok) {
+          console.error('Image Gen Failed', imgRes.status, imgData || 'No body');
+        } else {
+          const parsed = typeof imgData === 'string' ? (() => { try { return JSON.parse(imgData); } catch { return null; } })() : imgData;
+          const payload = parsed || imgData;
+          finalImageUrl = (() => {
+            if (!payload?.imageUrl) return undefined;
+            if (payload.isUrl) return payload.imageUrl;
+            if (typeof payload.imageUrl === 'string' && payload.imageUrl.startsWith('data:image')) return payload.imageUrl;
+            return `data:image/png;base64,${payload.imageUrl}`;
+          })();
+        }
+      } catch (err) {
+        console.error('Image Gen Error:', err);
+      }
 
-      // Update State with Image
       const finalDish: Dish = { ...baseDish, imageUrl: finalImageUrl };
 
       setGameState(prev => ({
@@ -517,7 +556,6 @@ export default function ChoppedGame() {
       }));
       setLoadingStates(prev => ({ ...prev, [chef.id]: 'done' }));
 
-      // Track history (upsert by round)
       setDishHistory(prev => {
         const existing = prev[chef.id] || [];
         const filtered = existing.filter(d => d.roundNumber !== roundNum);
@@ -785,11 +823,21 @@ export default function ChoppedGame() {
           <div className="flex items-center gap-3">
             <button
               onClick={() => demoMode ? window.location.reload() : enterDemoMode()}
-              className={`px-4 py-2 rounded-lg text-xs font-semibold border transition-colors ${demoMode ? 'bg-emerald-700/60 border-emerald-400 text-white' : 'bg-gray-900 border-gray-700 text-amber-300 hover:border-amber-500'}`}
+              className={`px-6 py-3 rounded-xl text-sm font-bold border transition-all shadow ${demoMode ? 'bg-emerald-700/80 border-emerald-400 text-white hover:scale-105' : 'bg-gray-900 border-amber-500 text-amber-200 hover:bg-amber-600 hover:text-white hover:border-amber-400 hover:scale-105'}`}
             >
               {demoMode ? 'Exit Example Game' : 'Example Game (Free!)'}
             </button>
-            <SettingsModal />
+            <SettingsModal
+              gatewayKey={gatewayKey}
+              onKeyChange={(k) => {
+                setGatewayKey(k);
+                if (typeof window !== 'undefined') {
+                  if (k) sessionStorage.setItem('AI_GATEWAY_API_KEY', k);
+                  else sessionStorage.removeItem('AI_GATEWAY_API_KEY');
+                }
+                setCreditsState((prev: CreditsState) => ({ ...prev, status: 'missing' as const, error: 'Validate balance to unlock gameplay.' }));
+              }}
+            />
           </div>
         </div>
       </header>
@@ -807,28 +855,17 @@ export default function ChoppedGame() {
 
         {creditsState.status !== 'valid' && (
           <div className="mb-6 p-4 border border-gray-800 rounded-xl bg-gray-900/50 flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
-              <div className="flex items-start gap-3">
-                {creditsState.status === 'valid' ? (
-                  <ShieldCheck className="text-green-400 mt-1" size={20} />
-                ) : (
-                  <Lock className="text-amber-400 mt-1" size={20} />
+            <div className="flex items-start gap-3">
+              <Lock className="text-amber-400 mt-1" size={20} />
+              <div>
+                <p className="text-sm font-semibold text-white">Enter your Vercel AI Gateway key in Settings, then validate balance.</p>
+                <p className="text-xs text-gray-400">Gameplay stays locked (greyed out) until /credits shows more than $1 remaining.</p>
+                {creditsState.status === 'missing' && (
+                  <p className="text-xs text-emerald-300 mt-1">No key handy? Try the Example Game (Free!) to preview the flow without spending credits.</p>
                 )}
-                <div>
-                  <p className="text-sm font-semibold text-white">Enter your Vercel AI Gateway key in Settings, then validate balance.</p>
-                  <p className="text-xs text-gray-400">Gameplay stays locked (greyed out) until /credits shows more than $1 remaining.</p>
-                  {creditsState.status === 'missing' && (
-                    <p className="text-xs text-emerald-300 mt-1">No key handy? Try the Example Game (Free!) to preview the flow without spending credits.</p>
-                  )}
-                  <div className="text-xs mt-1">
-                    {creditsState.status === 'valid' && (
-                      <span className="text-green-400 font-semibold">Balance OK: ${creditsState.balance?.toFixed(2)}</span>
-                    )}
-                    {creditsState.status !== 'valid' && (
-                    <span className="text-amber-300 flex items-center gap-2">
-                      <AlertCircle size={12} className="text-amber-500" />
-                      {creditsState.error || 'Waiting for validation...'}
-                    </span>
-                  )}
+                <div className="text-xs mt-1 text-amber-300 flex items-center gap-2">
+                  <AlertCircle size={12} className="text-amber-500" />
+                  {creditsState.error || 'Waiting for validation...'}
                 </div>
               </div>
             </div>
@@ -841,222 +878,222 @@ export default function ChoppedGame() {
                 {creditsState.status === 'checking' ? <RefreshCw size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
                 {creditsState.status === 'checking' ? 'Checking...' : 'Validate Balance'}
               </button>
-              <span className="text-[11px] text-gray-500">Use Settings to update your API key.</span>
+              <span className="text-sm text-gray-300">Use Settings to update your API key.</span>
             </div>
           </div>
         )}
 
         <div className={`${gameplayLocked ? 'opacity-50 pointer-events-none select-none' : ''}`}>
 
-        {/* Round Controls */}
-        <section className="mb-12 text-center space-y-6">
-          {!hasGeneratedChefs ? (
-            <div className="max-w-3xl mx-auto space-y-4 animate-in fade-in slide-in-from-top-4 duration-700">
-              <div className="flex items-center justify-center gap-3">
-                <UserPlus className="text-amber-500" />
-                <h2 className="text-3xl font-bold text-white">Generate Chefs</h2>
-              </div>
-              <p className="text-gray-400 text-sm max-w-2xl mx-auto">
-                Before cooking begins, let each AI chef pick their own name and a quick backstory. Basket selection unlocks once introductions are finished.
-              </p>
-              <button
-                onClick={generateChefs}
-                disabled={generatingChefs}
-                className="w-full md:w-auto px-6 py-3 bg-amber-600 hover:bg-amber-500 text-white rounded-xl font-bold text-lg transition-all flex items-center justify-center gap-2 mx-auto disabled:opacity-60"
-              >
-                {generatingChefs ? <RefreshCw className="animate-spin" size={18} /> : <UserPlus size={18} />}
-                {generatingChefs ? 'Asking chefs for intros...' : 'Generate Chefs'}
-              </button>
-
-              <div className="max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {chefs.map(chef => {
-                  const status = chefIntroStatus[chef.id];
-                  const statusText = status === 'done' ? 'Ready' : status === 'error' ? 'Retry needed' : generatingChefs ? 'Generating...' : 'Waiting';
-                  const statusColor = status === 'done' ? 'text-green-400' : status === 'error' ? 'text-red-400' : 'text-amber-400';
-                  return (
-                    <div key={chef.id} className="flex items-start gap-5 bg-gray-900/70 border border-gray-800 rounded-2xl p-6 min-h-[260px]">
-                      <button
-                        onClick={() => chef.avatarUrl && openLightbox(chef.avatarUrl, `${chef.name} portrait`, chef.name)}
-                        className="w-24 h-24 rounded-full overflow-hidden bg-gray-800 border border-gray-700 flex items-center justify-center shrink-0 disabled:cursor-default shadow-inner"
-                        disabled={!chef.avatarUrl}
-                        title={chef.avatarUrl ? 'View portrait' : undefined}
-                      >
-                        {chef.avatarUrl ? (
-                          <img src={chef.avatarUrl} alt={chef.name} className="w-full h-full object-cover" />
-                        ) : (
-                          <span className={`w-full h-full flex items-center justify-center font-bold text-xs ${chef.color}`}>{chef.name[0]}</span>
-                        )}
-                      </button>
-                      <div className="text-left flex-1">
-                        <p className="font-semibold text-white text-xl">{chef.name}</p>
-                        <p className="text-[13px] text-gray-400 uppercase tracking-wide">{chef.modelId}</p>
-                        {chef.bio && <p className="text-base text-gray-200 mt-3 leading-relaxed">{chef.bio}</p>}
-                        <span className={`text-[12px] ${statusColor}`}>{statusText}</span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {chefIntrosReady && (
-                <div className="text-center">
-                  <button
-                    onClick={moveToRoundOne}
-                    className="mt-4 px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold text-lg transition-all shadow-lg"
-                  >
-                    Move to Round 1
-                  </button>
+          {/* Round Controls */}
+          <section className="mb-12 text-center space-y-6">
+            {!hasGeneratedChefs ? (
+              <div className="max-w-3xl mx-auto space-y-4 animate-in fade-in slide-in-from-top-4 duration-700">
+                <div className="flex items-center justify-center gap-3">
+                  <UserPlus className="text-amber-500" />
+                  <h2 className="text-3xl font-bold text-white">Generate Chefs</h2>
                 </div>
-              )}
-            </div>
-          ) : (
-            <>
-              {gameState.status === 'idle' && (
-                <div className="max-w-2xl mx-auto space-y-4 animate-in fade-in slide-in-from-top-4 duration-700">
-                  <div className="flex items-baseline justify-center gap-3">
-                    <h2 className="text-3xl font-light text-gray-300">
-                      Round {gameState.roundNumber + 1}:
-                    </h2>
-                    <h2 className="text-3xl font-bold text-amber-500 uppercase">{currentRoundType}</h2>
-                  </div>
-                  <p className="text-gray-500">Select 4 mystery ingredients to start the clock.</p>
+                <p className="text-gray-400 text-sm max-w-2xl mx-auto">
+                  Before cooking begins, let each AI chef pick their own name and a quick backstory. Basket selection unlocks once introductions are finished.
+                </p>
+                <button
+                  onClick={generateChefs}
+                  disabled={generatingChefs}
+                  className="w-full md:w-auto px-6 py-3 bg-amber-600 hover:bg-amber-500 text-white rounded-xl font-bold text-lg transition-all flex items-center justify-center gap-2 mx-auto disabled:opacity-60"
+                >
+                  {generatingChefs ? <RefreshCw className="animate-spin" size={18} /> : <UserPlus size={18} />}
+                  {generatingChefs ? 'Asking chefs for intros...' : 'Generate Chefs'}
+                </button>
 
-                  <div className="bg-gray-900/50 p-6 rounded-2xl border border-gray-800">
-                    <div className="flex justify-between items-center mb-4">
+                <div className="max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {chefs.map(chef => {
+                    const status = chefIntroStatus[chef.id];
+                    const statusText = status === 'done' ? 'Ready' : status === 'error' ? 'Retry needed' : generatingChefs ? 'Generating...' : 'Waiting';
+                    const statusColor = status === 'done' ? 'text-green-400' : status === 'error' ? 'text-red-400' : 'text-amber-400';
+                    return (
+                      <div key={chef.id} className="flex items-start gap-5 bg-gray-900/70 border border-gray-800 rounded-2xl p-6 min-h-[260px]">
+                        <button
+                          onClick={() => chef.avatarUrl && openLightbox(chef.avatarUrl, `${chef.name} portrait`, chef.name)}
+                          className="w-24 h-24 rounded-full overflow-hidden bg-gray-800 border border-gray-700 flex items-center justify-center shrink-0 disabled:cursor-default shadow-inner"
+                          disabled={!chef.avatarUrl}
+                          title={chef.avatarUrl ? 'View portrait' : undefined}
+                        >
+                          {chef.avatarUrl ? (
+                            <img src={chef.avatarUrl} alt={chef.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <span className={`w-full h-full flex items-center justify-center font-bold text-xs ${chef.color}`}>{chef.name[0]}</span>
+                          )}
+                        </button>
+                        <div className="text-left flex-1">
+                          <p className="font-semibold text-white text-xl">{chef.name}</p>
+                          <p className="text-[13px] text-gray-400 uppercase tracking-wide">{chef.modelId}</p>
+                          {chef.bio && <p className="text-base text-gray-200 mt-3 leading-relaxed">{chef.bio}</p>}
+                          <span className={`text-[12px] ${statusColor}`}>{statusText}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {chefIntrosReady && (
+                  <div className="text-center">
+                    <button
+                      onClick={moveToRoundOne}
+                      className="mt-4 px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold text-lg transition-all shadow-lg"
+                    >
+                      Move to Round 1
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <>
+                {gameState.status === 'idle' && (
+                  <div className="max-w-2xl mx-auto space-y-4 animate-in fade-in slide-in-from-top-4 duration-700">
+                    <div className="flex items-baseline justify-center gap-3">
+                      <h2 className="text-3xl font-light text-gray-300">
+                        Round {gameState.roundNumber + 1}:
+                      </h2>
+                      <h2 className="text-3xl font-bold text-amber-500 uppercase">{currentRoundType}</h2>
+                    </div>
+                    <p className="text-gray-500">Select 4 mystery ingredients to start the clock.</p>
+
+                    <div className="bg-gray-900/50 p-6 rounded-2xl border border-gray-800">
+                      <div className="flex justify-between items-center mb-4">
                       <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest">Basket Items</h3>
                       <button
                         onClick={randomizeBasket}
                         disabled={generatingChefs}
-                        className="flex items-center gap-2 text-xs font-bold text-amber-500 hover:text-amber-400 transition-colors uppercase disabled:opacity-50"
+                        className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold text-black bg-amber-400 hover:bg-amber-300 transition-all uppercase disabled:opacity-50 shadow"
                       >
                         <Dices size={16} />
                         Randomize Basket
                       </button>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                      <IngredientSelect
-                        value={basket[0]}
-                        onChange={v => handleBasketChange(0, v)}
-                        options={ingredientOptions}
-                        placeholder="Item 1"
-                      />
-                      <IngredientSelect
-                        value={basket[1]}
-                        onChange={v => handleBasketChange(1, v)}
-                        options={ingredientOptions}
-                        placeholder="Item 2"
-                      />
-                      <IngredientSelect
-                        value={basket[2]}
-                        onChange={v => handleBasketChange(2, v)}
-                        options={ingredientOptions}
-                        placeholder="Item 3"
-                      />
-                      <IngredientSelect
-                        value={basket[3]}
-                        onChange={v => handleBasketChange(3, v)}
-                        options={ingredientOptions}
-                        placeholder="Item 4"
-                      />
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                        <IngredientSelect
+                          value={basket[0]}
+                          onChange={v => handleBasketChange(0, v)}
+                          options={ingredientOptions}
+                          placeholder="Item 1"
+                        />
+                        <IngredientSelect
+                          value={basket[1]}
+                          onChange={v => handleBasketChange(1, v)}
+                          options={ingredientOptions}
+                          placeholder="Item 2"
+                        />
+                        <IngredientSelect
+                          value={basket[2]}
+                          onChange={v => handleBasketChange(2, v)}
+                          options={ingredientOptions}
+                          placeholder="Item 3"
+                        />
+                        <IngredientSelect
+                          value={basket[3]}
+                          onChange={v => handleBasketChange(3, v)}
+                          options={ingredientOptions}
+                          placeholder="Item 4"
+                        />
+                      </div>
+
+                      <button
+                        onClick={startRound}
+                        disabled={!canStartRound}
+                        className="w-full bg-amber-600 hover:bg-amber-500 text-white py-4 rounded-xl font-bold text-lg transition-all flex items-center justify-center gap-2 shadow-lg shadow-amber-900/20 hover:scale-[1.01] disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Open Basket & Start Round <ArrowRight size={20} />
+                      </button>
                     </div>
-
-                    <button
-                      onClick={startRound}
-                      disabled={!canStartRound}
-                      className="w-full bg-amber-600 hover:bg-amber-500 text-white py-4 rounded-xl font-bold text-lg transition-all flex items-center justify-center gap-2 shadow-lg shadow-amber-900/20 hover:scale-[1.01] disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Open Basket & Start Round <ArrowRight size={20} />
-                    </button>
                   </div>
-                </div>
-              )}
+                )}
 
-              {gameState.status !== 'idle' && (
-                <div className="flex flex-col items-center">
-                  <h2 className="text-4xl font-black text-white mb-2 uppercase tracking-tight">
-                    {gameState.roundNumber === 1 ? 'Appetizer' :
-                      gameState.roundNumber === 2 ? 'Entree' :
-                        gameState.roundNumber === 3 ? 'Dessert' :
-                          `Round ${gameState.roundNumber}`} Round
-                  </h2>
-                  <div className="flex gap-2 text-amber-500 font-mono text-sm border border-amber-900/50 bg-amber-950/20 px-4 py-2 rounded-full">
-                    {gameState.ingredients.join(' | ')}
+                {gameState.status !== 'idle' && (
+                  <div className="flex flex-col items-center">
+                    <h2 className="text-4xl font-black text-white mb-2 uppercase tracking-tight">
+                      {gameState.roundNumber === 1 ? 'Appetizer' :
+                        gameState.roundNumber === 2 ? 'Entree' :
+                          gameState.roundNumber === 3 ? 'Dessert' :
+                            `Round ${gameState.roundNumber}`} Round
+                    </h2>
+                    <div className="flex gap-2 text-amber-500 font-mono text-sm border border-amber-900/50 bg-amber-950/20 px-4 py-2 rounded-full">
+                      {gameState.ingredients.join(' | ')}
+                    </div>
+                    {gameState.status === 'judging' && (
+                      <p className="mt-8 text-xl text-red-400 font-bold animate-pulse">
+                        Who will be CHOPPED?
+                      </p>
+                    )}
                   </div>
-                  {gameState.status === 'judging' && (
-                    <p className="mt-8 text-xl text-red-400 font-bold animate-pulse">
-                      Who will be CHOPPED?
-                    </p>
-                  )}
-                </div>
-              )}
-            </>
-          )}
-        </section>
+                )}
+              </>
+            )}
+          </section>
 
-        {/* Chefs Carousel */}
-        {gameState.status !== 'idle' && (
-        <div className="mt-8">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-xl font-semibold text-white">Chef Dishes</h3>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setCurrentChefIndex(prev => Math.max(0, prev - 1))}
-                className="px-5 py-3 bg-gray-800 border border-gray-700 rounded-lg text-base font-semibold text-white disabled:opacity-40 hover:border-amber-500 transition-colors"
-                disabled={currentChefIndex === 0}
-              >
-                Prev
-              </button>
-              <button
-                onClick={() => setCurrentChefIndex(prev => Math.min(activeChefs.length - 1, prev + 1))}
-                className="px-5 py-3 bg-gray-800 border border-gray-700 rounded-lg text-base font-semibold text-white disabled:opacity-40 hover:border-amber-500 transition-colors"
-                disabled={currentChefIndex >= activeChefs.length - 1}
-              >
-                Next
-              </button>
-            </div>
-          </div>
-
-          {activeChefs.length > 0 && (
-            <div className="relative max-w-3xl mx-auto">
-              {(() => {
-                const chef = activeChefs[currentChefIndex];
-                const dish = gameState.dishes[chef.id];
-                const loadingInfo = loadingStates[chef.id];
-
-                let cardStatus: any = 'idle';
-                if (loadingInfo === 'text' || loadingInfo === 'image') cardStatus = 'working';
-                else if (loadingInfo === 'done' || loadingInfo === 'error') cardStatus = 'done';
-
-                return (
-                  <ChefCard
-                    key={chef.id}
-                    chef={chef}
-                    dish={dish}
-                    status={cardStatus}
-                    onEliminate={eliminateChef}
-                    isStreaming={false}
-                    onImageClick={(src?: string) => openLightbox(src, dish?.title, chef.name)}
-                    onAvatarClick={(src?: string) => openLightbox(src, `${chef.name} portrait`, chef.name)}
-                    chopLocked={hasChoppedThisRound}
-                  />
-                );
-              })()}
-
-              <div className="flex justify-center gap-2 mt-4">
-                {activeChefs.map((c, idx) => (
+          {/* Chefs Carousel */}
+          {gameState.status !== 'idle' && (
+            <div className="mt-8">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xl font-semibold text-white">Chef Dishes</h3>
+                <div className="flex items-center gap-3">
                   <button
-                    key={c.id}
-                    onClick={() => setCurrentChefIndex(idx)}
-                    className={`w-3 h-3 rounded-full ${idx === currentChefIndex ? 'bg-amber-500' : 'bg-gray-700'}`}
-                    aria-label={`View ${c.name}`}
-                  />
-                ))}
+                    onClick={() => setCurrentChefIndex(prev => Math.max(0, prev - 1))}
+                    className="px-5 py-3 bg-gray-800 border border-gray-700 rounded-lg text-base font-semibold text-white disabled:opacity-40 hover:border-amber-500 transition-colors"
+                    disabled={currentChefIndex === 0}
+                  >
+                    Prev
+                  </button>
+                  <button
+                    onClick={() => setCurrentChefIndex(prev => Math.min(activeChefs.length - 1, prev + 1))}
+                    className="px-5 py-3 bg-gray-800 border border-gray-700 rounded-lg text-base font-semibold text-white disabled:opacity-40 hover:border-amber-500 transition-colors"
+                    disabled={currentChefIndex >= activeChefs.length - 1}
+                  >
+                    Next
+                  </button>
+                </div>
               </div>
+
+              {activeChefs.length > 0 && (
+                <div className="relative max-w-3xl mx-auto">
+                  {(() => {
+                    const chef = activeChefs[currentChefIndex];
+                    const dish = gameState.dishes[chef.id];
+                    const loadingInfo = loadingStates[chef.id];
+
+                    let cardStatus: any = 'idle';
+                    if (loadingInfo === 'text' || loadingInfo === 'image') cardStatus = 'working';
+                    else if (loadingInfo === 'done' || loadingInfo === 'error') cardStatus = 'done';
+
+                    return (
+                      <ChefCard
+                        key={chef.id}
+                        chef={chef}
+                        dish={dish}
+                        status={cardStatus}
+                        onEliminate={eliminateChef}
+                        isStreaming={false}
+                        onImageClick={(src?: string) => openLightbox(src, dish?.title, chef.name)}
+                        onAvatarClick={(src?: string) => openLightbox(src, `${chef.name} portrait`, chef.name)}
+                        chopLocked={hasChoppedThisRound}
+                      />
+                    );
+                  })()}
+
+                  <div className="flex justify-center gap-2 mt-4">
+                    {activeChefs.map((c, idx) => (
+                      <button
+                        key={c.id}
+                        onClick={() => setCurrentChefIndex(idx)}
+                        className={`w-3 h-3 rounded-full ${idx === currentChefIndex ? 'bg-amber-500' : 'bg-gray-700'}`}
+                        aria-label={`View ${c.name}`}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
-        </div>
-        )}
         </div>
 
         {lightboxImage && (
