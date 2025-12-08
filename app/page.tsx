@@ -823,7 +823,7 @@ export default function ChoppedGame() {
           <div className="flex items-center gap-3">
             <button
               onClick={() => demoMode ? window.location.reload() : enterDemoMode()}
-              className={`px-6 py-3 rounded-xl text-sm font-bold border transition-all shadow ${demoMode ? 'bg-emerald-700/80 border-emerald-400 text-white hover:scale-105' : 'bg-gray-900 border-amber-500 text-amber-200 hover:bg-amber-600 hover:text-white hover:border-amber-400 hover:scale-105'}`}
+              className={`px-3 py-1.5 md:px-4 md:py-2 rounded-lg md:rounded-xl text-[11px] md:text-xs font-bold border transition-all shadow leading-tight ${demoMode ? 'bg-emerald-700/80 border-emerald-400 text-white hover:scale-105' : 'bg-gray-900 border-amber-500 text-amber-200 hover:bg-amber-600 hover:text-white hover:border-amber-400 hover:scale-105'}`}
             >
               {demoMode ? 'Exit Example Game' : 'Example Game (Free!)'}
             </button>
