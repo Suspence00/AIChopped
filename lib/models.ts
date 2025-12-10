@@ -12,7 +12,7 @@ export const FORCED_IMAGE_MODELS = {
 
 export const AVAILABLE_MODELS: Record<string, ModelOption[]> = {
     openai: [
-        { id: 'openai/gpt-5-nano', name: 'GPT-5 Nano' },
+        { id: 'openai/gpt-4o-mini', name: 'GPT-4o Mini' },
     ],
     anthropic: [
         { id: 'anthropic/claude-3-haiku', name: 'Claude 3 Haiku' },
@@ -26,7 +26,7 @@ export const AVAILABLE_MODELS: Record<string, ModelOption[]> = {
 };
 
 export const DEFAULT_MODELS = {
-    openai: 'openai/gpt-5-nano',
+    openai: 'openai/gpt-4o-mini',
     anthropic: 'anthropic/claude-3-haiku',
     google: 'google/gemini-2.5-flash-lite',
     xai: 'xai/grok-4.1-fast-reasoning'
