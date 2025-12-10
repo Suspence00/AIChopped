@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Settings, Lock, CheckCircle, AlertCircle, RefreshCw, Wallet } from 'lucide-react';
-import { AVAILABLE_MODELS, DEFAULT_MODELS, AVAILABLE_IMAGE_MODELS, DEFAULT_IMAGE_MODELS } from '@/lib/models';
+import { AVAILABLE_MODELS, DEFAULT_MODELS, AVAILABLE_IMAGE_MODELS, DEFAULT_IMAGE_MODELS, sanitizeModelConfig } from '@/lib/models';
 
 type SettingsModalProps = {
     gatewayKey: string;
@@ -259,7 +259,7 @@ export default function SettingsModal({ gatewayKey, onKeyChange }: SettingsModal
         const storedModels = localStorage.getItem('AI_MODELS_CONFIG');
         if (storedModels) {
             try {
-                setModels({ ...DEFAULT_MODELS, ...JSON.parse(storedModels) });
+                setModels(sanitizeModelConfig(JSON.parse(storedModels)));
             } catch (e) {
                 console.error("Failed to parse stored models", e);
             }

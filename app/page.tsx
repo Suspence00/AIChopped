@@ -7,9 +7,9 @@ import { ChefCard } from '@/components/ChefCard';
 import SettingsModal from '@/components/SettingsModal';
 import IngredientSelect from '@/components/IngredientSelect';
 import { getIngredients, getRandomBasket, RoundType } from '@/lib/ingredients';
-import { RefreshCw, Trophy, UtensilsCrossed, ArrowRight, ChefHat, Dices, Lock, UserPlus, AlertCircle } from 'lucide-react';
+import { RefreshCw, Trophy, UtensilsCrossed, ArrowRight, ArrowLeft, ChefHat, Dices, Lock, UserPlus, AlertCircle } from 'lucide-react';
 
-import { DEFAULT_MODELS, FORCED_IMAGE_MODELS, DEFAULT_IMAGE_MODELS, AVAILABLE_IMAGE_MODELS } from '@/lib/models';
+import { DEFAULT_MODELS, FORCED_IMAGE_MODELS, DEFAULT_IMAGE_MODELS, AVAILABLE_IMAGE_MODELS, sanitizeModelConfig } from '@/lib/models';
 import { demoChefs, demoBaskets, demoDishes, demoIntroStatus } from '@/lib/demoData';
 
 // --- Types ---
@@ -114,7 +114,7 @@ export default function ChoppedGame() {
     if (storedModels) {
       try {
         const parsed = JSON.parse(storedModels);
-        setCurrentModels(prev => ({ ...prev, ...parsed }));
+        setCurrentModels(sanitizeModelConfig(parsed));
       } catch (e) { }
     }
 
@@ -896,7 +896,7 @@ export default function ChoppedGame() {
                   <ChefHat className="text-amber-400" size={18} />
                 </div>
                 <h3 className="text-xl font-semibold text-amber-300">{dish.title}</h3>
-                <p className="text-sm text-gray-300 leading-relaxed max-h-40 overflow-y-auto whitespace-pre-wrap">{dish.description}</p>
+                <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">{dish.description}</p>
                 {dish.imageUrl && (
                   <button
                     onClick={() => openLightbox(dish.imageUrl, dish.title, winner?.name)}
@@ -1192,24 +1192,21 @@ export default function ChoppedGame() {
           {/* Chefs Carousel */}
           {gameState.status !== 'idle' && (
             <div className="mt-8">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-xl font-semibold text-white">Chef Dishes</h3>
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => setCurrentChefIndex(prev => Math.max(0, prev - 1))}
-                    className="px-5 py-3 bg-gray-800 border border-gray-700 rounded-lg text-base font-semibold text-white disabled:opacity-40 hover:border-amber-500 transition-colors"
-                    disabled={currentChefIndex === 0}
-                  >
-                    Prev
-                  </button>
-                  <button
-                    onClick={() => setCurrentChefIndex(prev => Math.min(activeChefs.length - 1, prev + 1))}
-                    className="px-5 py-3 bg-gray-800 border border-gray-700 rounded-lg text-base font-semibold text-white disabled:opacity-40 hover:border-amber-500 transition-colors"
-                    disabled={currentChefIndex >= activeChefs.length - 1}
-                  >
-                    Next
-                  </button>
-                </div>
+              <div className="flex items-center justify-center mb-4 gap-3">
+                <button
+                  onClick={() => setCurrentChefIndex(prev => Math.max(0, prev - 1))}
+                  className="px-5 py-3 bg-gray-800 border border-gray-700 rounded-lg text-base font-semibold text-white disabled:opacity-40 hover:border-amber-500 transition-colors"
+                  disabled={currentChefIndex === 0}
+                >
+                  Prev
+                </button>
+                <button
+                  onClick={() => setCurrentChefIndex(prev => Math.min(activeChefs.length - 1, prev + 1))}
+                  className="px-5 py-3 bg-gray-800 border border-gray-700 rounded-lg text-base font-semibold text-white disabled:opacity-40 hover:border-amber-500 transition-colors"
+                  disabled={currentChefIndex >= activeChefs.length - 1}
+                >
+                  Next
+                </button>
               </div>
 
               {activeChefs.length > 0 && (
@@ -1242,6 +1239,28 @@ export default function ChoppedGame() {
                       />
                     );
                   })()}
+
+                  {/* Side carousel controls */}
+                  {activeChefs.length > 1 && (
+                    <div className="pointer-events-none absolute inset-y-0 -left-14 -right-14 flex items-center justify-between">
+                      <button
+                        onClick={() => setCurrentChefIndex(prev => Math.max(0, prev - 1))}
+                        disabled={currentChefIndex === 0}
+                        className="pointer-events-auto p-3 rounded-full bg-white/10 backdrop-blur-md border border-amber-400/30 text-amber-100 shadow-[0_10px_30px_rgba(251,191,36,0.25)] hover:scale-105 hover:border-amber-300 transition disabled:opacity-25 disabled:cursor-not-allowed"
+                        aria-label="Previous chef"
+                      >
+                        <ArrowLeft size={18} />
+                      </button>
+                      <button
+                        onClick={() => setCurrentChefIndex(prev => Math.min(activeChefs.length - 1, prev + 1))}
+                        disabled={currentChefIndex >= activeChefs.length - 1}
+                        className="pointer-events-auto p-3 rounded-full bg-white/10 backdrop-blur-md border border-amber-400/30 text-amber-100 shadow-[0_10px_30px_rgba(251,191,36,0.25)] hover:scale-105 hover:border-amber-300 transition disabled:opacity-25 disabled:cursor-not-allowed"
+                        aria-label="Next chef"
+                      >
+                        <ArrowRight size={18} />
+                      </button>
+                    </div>
+                  )}
 
                   <div className="flex justify-center gap-2 mt-4">
                     {activeChefs.map((c, idx) => (

@@ -22,7 +22,7 @@ export const demoChefs: Chef[] = [
   {
     "id": "openai",
     "name": "Rowan Kline",
-    "modelId": "openai/gpt-4.1-nano",
+    "modelId": "openai/gpt-5-nano",
     "color": "bg-green-600",
     "bio": "A former bakery intern turned TV pantry host, Rowan Kline crafts bold flavors with street-smart hustle and a fearless, sunny kitchen swagger.",
     "avatarUrl": "/demo/chef-openai.png",
@@ -245,4 +245,3 @@ export const demoIntroStatus = {
   "openai": "done",
   "xai": "done"
 } as Record<string, 'pending' | 'done'>;
-

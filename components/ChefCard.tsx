@@ -74,11 +74,16 @@ export function ChefCard({ chef, dish, status, onEliminate, isStreaming, streamC
                     </div>
                 ) : (
                     <>
-                        <div className="min-h-[36px]">
-                            <h4 className="font-serif text-xl text-amber-500 mb-1 leading-snug">{displayTitle}</h4>
+                        <div className="relative min-h-[56px]">
+                            <h4 className="font-black text-2xl md:text-3xl tracking-tight leading-snug text-amber-100 drop-shadow-[0_6px_18px_rgba(251,191,36,0.35)]">
+                                <span className="bg-gradient-to-r from-amber-300 via-yellow-200 to-amber-500 bg-clip-text text-transparent">
+                                    {displayTitle}
+                                </span>
+                            </h4>
+                            <div className="absolute left-0 bottom-0 h-1 w-16 rounded-full bg-gradient-to-r from-amber-500 via-yellow-300 to-amber-400 blur-[1px]" />
                         </div>
 
-                        <div className="prose prose-invert prose-sm text-gray-300 flex-1 min-h-[120px] max-h-72 overflow-y-auto">
+                        <div className="prose prose-invert prose-sm text-gray-300 flex-1 min-h-[120px]">
                             {renderParagraphs(displayDescription)}
                         </div>
                     </>

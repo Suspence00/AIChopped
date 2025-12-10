@@ -12,7 +12,7 @@ export const FORCED_IMAGE_MODELS = {
 
 export const AVAILABLE_MODELS: Record<string, ModelOption[]> = {
     openai: [
-        { id: 'openai/gpt-4.1-nano', name: 'GPT-4.1 Nano' },
+        { id: 'openai/gpt-5-nano', name: 'GPT-5 Nano' },
     ],
     anthropic: [
         { id: 'anthropic/claude-3-haiku', name: 'Claude 3 Haiku' },
@@ -26,11 +26,23 @@ export const AVAILABLE_MODELS: Record<string, ModelOption[]> = {
 };
 
 export const DEFAULT_MODELS = {
-    openai: 'openai/gpt-4.1-nano',
+    openai: 'openai/gpt-5-nano',
     anthropic: 'anthropic/claude-3-haiku',
     google: 'google/gemini-2.5-flash-lite',
     xai: 'xai/grok-4.1-fast-reasoning'
 };
+
+export function sanitizeModelConfig(config: Partial<Record<keyof typeof DEFAULT_MODELS, string>> = {}) {
+    const sanitized: typeof DEFAULT_MODELS = { ...DEFAULT_MODELS };
+    (Object.keys(DEFAULT_MODELS) as (keyof typeof DEFAULT_MODELS)[]).forEach(provider => {
+        const allowed = AVAILABLE_MODELS[provider].map(m => m.id);
+        const candidate = config[provider];
+        if (typeof candidate === 'string' && allowed.includes(candidate)) {
+            sanitized[provider] = candidate;
+        }
+    });
+    return sanitized;
+}
 
 export const AVAILABLE_IMAGE_MODELS: Record<string, ModelOption[]> = {
     openai: [
