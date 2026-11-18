@@ -16,7 +16,7 @@
     "@vercel/analytics": "^1.6.1",
     "ai": "^5.0.108",
     "clsx": "^2.1.1",
-    "lucide-react": "^0.556.0",
+    "lucide-react": "^1.73.0",
     "next": "16.4.6",
     "react": "19.2.9",
     "react-dom": "19.2.9",
