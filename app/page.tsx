@@ -96,52 +96,48 @@ export default function ChoppedGame() {
     }
   };
 
-  // Load settings on mount
+  // Keep the API key in memory and remove legacy browser-stored copies.
   useEffect(() => {
     setMounted(true);
-    // Recover per-session key if available (we avoid persistent storage for the secret)
-    if (typeof window !== 'undefined') {
-      const storedKey = sessionStorage.getItem('AI_GATEWAY_API_KEY');
-      if (storedKey) {
-        setGatewayKey(storedKey);
-        validateCredits(storedKey);
-      } else {
-        setCreditsState({ status: 'missing', error: 'Add your AI Gateway key in Settings.' });
+    sessionStorage.removeItem('AI_GATEWAY_API_KEY');
+    localStorage.removeItem('AI_GATEWAY_API_KEY');
+    const loadSettings = () => {
+      const storedModels = localStorage.getItem('AI_MODELS_CONFIG');
+      if (storedModels) {
+        try {
+          const parsed = JSON.parse(storedModels);
+          setCurrentModels(sanitizeModelConfig(parsed));
+        } catch (e) { }
       }
-    }
 
-    const storedModels = localStorage.getItem('AI_MODELS_CONFIG');
-    if (storedModels) {
-      try {
-        const parsed = JSON.parse(storedModels);
-        setCurrentModels(sanitizeModelConfig(parsed));
-      } catch (e) { }
-    }
+      const storedImageModels = localStorage.getItem('AI_IMAGE_MODELS_CONFIG');
+      if (storedImageModels) {
+        try {
+          const parsed = JSON.parse(storedImageModels);
+          const sanitized: any = { ...DEFAULT_IMAGE_MODELS };
+          (Object.keys(DEFAULT_IMAGE_MODELS) as (keyof typeof DEFAULT_IMAGE_MODELS)[]).forEach(provider => {
+            const allowed = AVAILABLE_IMAGE_MODELS[provider].map(m => m.id);
+            const val = parsed[provider];
+            sanitized[provider] = allowed.includes(val) ? val : DEFAULT_IMAGE_MODELS[provider];
+          });
+          setCurrentImageModels(sanitized);
+        } catch (e) { }
+      }
 
-    const storedImageModels = localStorage.getItem('AI_IMAGE_MODELS_CONFIG');
-    if (storedImageModels) {
-      try {
-        const parsed = JSON.parse(storedImageModels);
-        const sanitized: any = { ...DEFAULT_IMAGE_MODELS };
-        (Object.keys(DEFAULT_IMAGE_MODELS) as (keyof typeof DEFAULT_IMAGE_MODELS)[]).forEach(provider => {
-          const allowed = AVAILABLE_IMAGE_MODELS[provider].map(m => m.id);
-          const val = parsed[provider];
-          sanitized[provider] = allowed.includes(val) ? val : DEFAULT_IMAGE_MODELS[provider];
-        });
-        setCurrentImageModels(sanitized);
-      } catch (e) { }
-    }
+      // Load detail preference
+      const storedShowDetails = localStorage.getItem('CHOPPED_SHOW_DETAILS');
+      if (storedShowDetails) setShowDetails(JSON.parse(storedShowDetails));
 
-    // Load detail preference
-    const storedShowDetails = localStorage.getItem('CHOPPED_SHOW_DETAILS');
-    if (storedShowDetails) setShowDetails(JSON.parse(storedShowDetails));
+      const storedPersonas = localStorage.getItem('CEF_PERSONAS_ENABLED');
+      if (storedPersonas) setUsePersonas(JSON.parse(storedPersonas));
 
-    const storedPersonas = localStorage.getItem('CEF_PERSONAS_ENABLED');
-    if (storedPersonas) setUsePersonas(JSON.parse(storedPersonas));
+      const storedDisableImages = localStorage.getItem('CHOPPED_DISABLE_IMAGE_GEN');
+      if (storedDisableImages) setDisableImageGen(JSON.parse(storedDisableImages));
 
-    const storedDisableImages = localStorage.getItem('CHOPPED_DISABLE_IMAGE_GEN');
-    if (storedDisableImages) setDisableImageGen(JSON.parse(storedDisableImages));
-
+    };
+    loadSettings();
+    window.addEventListener('chopped-settings-changed', loadSettings);
+    return () => window.removeEventListener('chopped-settings-changed', loadSettings);
   }, []);
 
   const [gameState, setGameState] = useState<RoundState>({
@@ -964,11 +960,7 @@ export default function ChoppedGame() {
               gatewayKey={gatewayKey}
               onKeyChange={(k) => {
                 setGatewayKey(k);
-                if (typeof window !== 'undefined') {
-                  if (k) sessionStorage.setItem('AI_GATEWAY_API_KEY', k);
-                  else sessionStorage.removeItem('AI_GATEWAY_API_KEY');
-                }
-                setCreditsState((prev: CreditsState) => ({ ...prev, status: 'missing' as const, error: 'Validate balance to unlock gameplay.' }));
+                void validateCredits(k);
               }}
             />
           </div>

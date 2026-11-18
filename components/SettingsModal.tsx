@@ -89,7 +89,7 @@ function ModalContent({ onClose, keyValue, setKey, models, handleModelChange, im
                     {/* Left: API Key */}
                     <div className="p-4 md:w-1/3 border-b md:border-b-0 md:border-r border-gray-700 bg-gray-900/30">
                         <h3 className="text-xs font-bold text-amber-500 uppercase mb-2">1. API Key</h3>
-                        <p className="text-gray-400 text-xs mb-2">Enter your Vercel AI Gateway Key</p>
+                        <p className="text-gray-400 text-xs mb-2">Enter your Vercel AI Gateway Key. It stays in memory for this page; enter it again after reloading.</p>
                         <Input
                             value={keyValue}
                             onChange={(e: any) => setKey(e.target.value)}
@@ -232,7 +232,7 @@ function ModalContent({ onClose, keyValue, setKey, models, handleModelChange, im
                         Cancel
                     </button>
                     <Button onClick={saveSettings} className="py-1.5 text-sm">
-                        Save & Reload
+                        Save Settings
                     </Button>
                 </div>
             </div>
@@ -285,10 +285,6 @@ export default function SettingsModal({ gatewayKey, onKeyChange }: SettingsModal
     }, [gatewayKey]);
 
     const saveSettings = () => {
-        if (typeof window !== 'undefined') {
-            if (key) sessionStorage.setItem('AI_GATEWAY_API_KEY', key);
-            else sessionStorage.removeItem('AI_GATEWAY_API_KEY');
-        }
         onKeyChange(key);
         localStorage.setItem('AI_MODELS_CONFIG', JSON.stringify(models));
         localStorage.setItem('AI_IMAGE_MODELS_CONFIG', JSON.stringify(imageModels));
@@ -298,7 +294,7 @@ export default function SettingsModal({ gatewayKey, onKeyChange }: SettingsModal
         localStorage.setItem('CEF_PERSONAS_ENABLED', JSON.stringify(usePersonas));
         localStorage.setItem('CHOPPED_DISABLE_IMAGE_GEN', JSON.stringify(disableImageGen));
         setOpen(false);
-        window.location.reload();
+        window.dispatchEvent(new Event('chopped-settings-changed'));
     };
 
     const checkCredits = async () => {
